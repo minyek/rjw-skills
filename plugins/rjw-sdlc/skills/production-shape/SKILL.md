@@ -46,7 +46,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 - **Invariants**: what you know and can exploit: ordering, closed sets, maximum sizes, platform facts.
 - **Bounded consumers**: every result crossing into a GUI, TUI, one process's memory or an agent's context window has a result limit, signals partiality explicitly ("200 of ~40k"), and has a reveal story: paging, progressive disclosure, history windowing and retention.
 
-The project's **workload reference** (for example `docs/agents/workloads.md`) states its maturity, the entities with their counts and rates now, the target and the ceiling, and one or more reference deployments. It should have been provided; if not, ask the user to write one, and meanwhile size the ceiling at the largest plausible deployment and history. Humans own it and revise it as load tests and production teach them.
+The project's **workload reference** (`docs/agents/workloads.md` unless the project keeps it elsewhere) states its maturity, the entities with their counts and rates now, the target and the ceiling, one or more reference deployments, and the project's conventions. When the project has none, follow [SETUP.md](SETUP.md); until it exists, size the ceiling at the largest plausible deployment and history. Humans own it and revise it as load tests and production teach them.
 
 When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous run), record the gap where the project records open questions and size for the largest plausible deployment.
 
