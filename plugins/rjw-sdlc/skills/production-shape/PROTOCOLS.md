@@ -7,4 +7,4 @@ Choose the format from who reads it, where it runs, how much flows, and how it e
 - **Volume and shape**: streams of small deltas, large blobs and tabular results each favour different encodings. Size the ceiling in bytes per second.
 - **Evolution**: write the rules before the first release: how a field is added, deprecated and removed; tags or names are never reused; readers skip what they do not know; peers handshake on version.
 
-JSON is one candidate among several, chosen when its readability or reach earns its cost. Binary formats are in bounds; the portfolio intends to standardise on specific ones so that choosing binary is the easy path.
+JSON is one candidate among several, chosen when its readability or reach earns its cost. Binary formats are in bounds. Where the project has standard formats, start from them.

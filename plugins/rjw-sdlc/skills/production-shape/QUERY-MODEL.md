@@ -1,6 +1,6 @@
 # Query model
 
-Choose where each query is answered, on purpose, for this data. The model the codebase already uses elsewhere is a candidate, not the default. Choose this axis together with [PROPAGATION.md](PROPAGATION.md).
+Any system that answers questions about data it does not hold in full decides where each query is answered. Decide it per dataset and query, from the data and its consumers; a model used elsewhere in the same system is one candidate among these. Choose this axis together with [PROPAGATION.md](PROPAGATION.md).
 
 The options, by what the local site knows:
 
