@@ -40,13 +40,13 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 ## Workload note
 
 - **Operations**: each read, write, query and subscription, with its frequency (per call, per request, per second).
-- **Cardinalities**: now, the target and the ceiling, from the workload reference. The design holds at the target; the ceiling sets the limits, the seams and the expiry condition.
+- **Cardinalities**: now, the target and the ceiling, from the workload model. The design holds at the target; the ceiling sets the limits, the seams and the expiry condition.
 - **Locality**: same process, same host, or cross-host.
 - **Resources**: a napkin sketch of network, disk, memory and CPU, each for bandwidth and latency, at the ceiling.
 - **Invariants**: what you know and can exploit: ordering, closed sets, maximum sizes, platform facts.
 - **Bounded consumers**: every result crossing into a GUI, TUI, one process's memory or an agent's context window has a result limit, signals partiality explicitly ("200 of ~40k"), and has a reveal story: paging, progressive disclosure, history windowing and retention.
 
-The project's **workload reference** (`docs/agents/workloads.md` unless the project keeps it elsewhere) states its maturity, the entities with their counts and rates now, the target and the ceiling, one or more reference deployments, and the project's conventions. When the project has none, follow [SETUP.md](SETUP.md); until it exists, size the ceiling at the largest plausible deployment and history. Humans own it and revise it as load tests and production teach them.
+The project's **workload model** is a `WORKLOAD.md` at the repository root plus any nearer the code: walk up from the code you are changing and read each one, nearest first. Together they state maturity, scale drivers, usage, dependencies and budgets, reference deployments and conventions. Read and write them as [WORKLOAD-FORMAT.md](WORKLOAD-FORMAT.md) describes. When the repository has no root file, follow [SETUP.md](SETUP.md); until it exists, size the ceiling at the largest plausible deployment and history. Humans own the root numbers and revise them as load tests and production teach them.
 
 When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous run), record the gap where the project records open questions and size for the largest plausible deployment.
 
@@ -59,7 +59,7 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 
 ## Project conventions
 
-Record decisions the way the project already does: its decision log, ADR set, PR descriptions, and where implementation-choice records live. The workload reference names them. When it names none, ask on first use and add the answer there, so the next run follows it without asking.
+Record decisions the way the project already does: its decision log, ADR set, PR descriptions, and where implementation-choice records live. The root `WORKLOAD.md` names them. When it names none, ask on first use and add the answer there, so the next run follows it without asking.
 
 ## Implementation choices
 
@@ -68,7 +68,7 @@ Settled choices accumulate where the code is, so later work builds on them inste
 - **Write a record** when a choice is non-obvious: it rejected a candidate a reasonable engineer would reach for. Ordinary choices get none.
 - **At the code**: one doc comment on the type or module naming the choice and its assumption markers, ending with a link to the record (`docs/implementation-choices/<name>.md` unless the project keeps them elsewhere).
 - **In the record**: the workload numbers it was sized against, the candidate walk with each rejection, the assumptions, and the expiry condition.
-- **Read** a record only for code you are changing. **Revisit** it only when an assumption marker fires, the workload reference's ceiling moves, or the code's operations change; otherwise it is settled.
+- **Read** a record only for code you are changing. **Revisit** it only when an assumption marker fires, a ceiling it was sized against moves, or the code's operations change; otherwise it is settled.
 - **Escalate to an ADR** (in the project's ADR set and format) when the choice fixes something others depend on: a wire or disk format, or a seam other modules use.
 
 ## Choosing a smaller shape
@@ -86,9 +86,10 @@ A smaller shape that bakes its limit into a protocol, an on-disk format or a pub
 
 Review is static: arithmetic is the evidence.
 
-- For each data path in the change, compute the hottest operation's cost at the ceiling from the workload reference. A **naive shape** is a finding when that arithmetic shows it; it needs no profile.
+- For each data path in the change, compute the hottest operation's cost at the ceiling from the workload model. A **naive shape** is a finding when that arithmetic shows it; it needs no profile.
 - Report naive shapes separately from size findings. The production shape is often less code, so never trade one against the other in a single finding.
 - On a scale-sensitive path, a missing workload note, or a smaller shape without an expiry and a seam, is a finding. Elsewhere it is not.
+- A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
 - Check that assumption markers exist where records say they do.
 
 ## Scope
