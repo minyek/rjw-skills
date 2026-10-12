@@ -8,9 +8,10 @@ Decide it at **every tier boundary**: between hosts, and also between a process'
 
 Named by what the nearer copy is for and what it guarantees:
 
-- **Cache** (`k -> v`, for keys fetched): serves key fetches, and is exactly right when access is by key. It cannot answer a query, because it cannot know which keys it is missing.
-- **Cached transform** (`k -> f(v)`, same key space): a cache of derived values.
-- **Materialized view**: a derived result maintained from the source's changes and rebuildable from it. It answers the query it was built for, or serves as a common subpart that many queries build on. A useful heuristic: when the key differs from the source's (`k' -> f(many v)`, often a singleton or an aggregate), it is a view rather than a cached transform.
+- **Cache** (`k -> v`, or `k -> f(v)` for a cached transform): serves key fetches, and is exactly right when access is by key. Read through, populate on miss, refresh on expiry: stale data never blocks access. It cannot answer a query, because it cannot know which keys it is missing.
+- **Materialized view**: a derived result maintained by full rebuild or incrementally from the source's changes. It answers the query it was built for, or serves as a common subpart that many queries build on.
+
+Cache or view? Ask two questions: are the keys the source's keys, and does a single source key determine the result? When both hold, a cache's read-through and expiry fit. When either fails (a singleton, an aggregate, a re-keyed index), no single fetch can refresh an entry, so maintain it as a view.
 - **Partial replica**: serves a subset of arbitrary source queries. Which queries it covers is knowable (**query cover**), and covered queries always come back within stated correctness bounds. It may omit columns or be lightly transformed. Answer covered queries locally; route the rest. A conservative cover check is fine. Every result says whether it is **complete** or **partial**.
 - **Full replica**: covers every source query, within the same correctness bounds. Cost is memory or storage and the change stream.
 - **Federation**: the query goes to the owner(s) and results are combined. Cost is latency and the owners' availability.
