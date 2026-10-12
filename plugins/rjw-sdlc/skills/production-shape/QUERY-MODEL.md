@@ -6,13 +6,13 @@ Decide it at **every tier boundary**: between hosts, and also between a process'
 
 ## Shapes
 
-Named by what the nearer copy holds and what it can answer:
+Named by what the nearer copy is for and what it guarantees:
 
 - **Cache** (`k -> v`, for keys fetched): serves key fetches, and is exactly right when access is by key. It cannot answer a query, because it cannot know which keys it is missing.
 - **Cached transform** (`k -> f(v)`, same key space): a cache of derived values.
-- **Materialized view** (`k' -> f(many v)`, a new key space, often a singleton or aggregate): answers exactly the query it was built for, maintained from the source's changes and rebuildable from the source.
-- **Partial replica**: a defined subset in the source's own shape, with **query cover**: the site can tell whether a query is fully answerable from what it holds. Answer covered queries locally; route the rest. A conservative cover check is fine. Every result says whether it is **complete** or **partial**.
-- **Full replica**: the whole dataset in the source's shape; any query answerable locally. Cost is memory or storage and the change stream.
+- **Materialized view**: a derived result maintained from the source's changes and rebuildable from it. It answers the query it was built for, or serves as a common subpart that many queries build on. A useful heuristic: when the key differs from the source's (`k' -> f(many v)`, often a singleton or an aggregate), it is a view rather than a cached transform.
+- **Partial replica**: serves a subset of arbitrary source queries. Which queries it covers is knowable (**query cover**), and covered queries always come back within stated correctness bounds. It may omit columns or be lightly transformed. Answer covered queries locally; route the rest. A conservative cover check is fine. Every result says whether it is **complete** or **partial**.
+- **Full replica**: covers every source query, within the same correctness bounds. Cost is memory or storage and the change stream.
 - **Federation**: the query goes to the owner(s) and results are combined. Cost is latency and the owners' availability.
 
 Mixed shapes are normal (a resident partial replica of the hot subset, the cold tail queried in the store) when each query's route is stated. Name the shape you build, and give it the guarantees of that shape.
