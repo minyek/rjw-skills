@@ -3,7 +3,7 @@
 Design and review data-touching work with the `production-shape` skill: production shape,
 profiler test, naive shape, workload note, candidate walk, bounded consumer, snapshot then
 deltas, query cover, operation lowering, single writer, steady state, match the defence to
-the boundary.
+the boundary, evolution level.
 
 This is the root file: it holds every absolute number. Component `WORKLOAD.md` files below
 it state their numbers per parent and inherit everything else from here.
@@ -58,6 +58,15 @@ Per-parent counts used by more than one component. An entity lives in the lowest
 |---|---|---|---|
 | `forge` (hosted git) | push webhooks; pipeline config reads | `forge.budget` = 5,000 API calls/hour per installation | webhooks at-least-once, may arrive late or be dropped; redelivery on request |
 | `object_store` | finished logs | billed per request and per GB-month | strongly consistent reads after write |
+
+## Evolution
+
+| Surface | Level | Window | Refinements |
+|---|---|---|---|
+| Jobs and pipelines store | rollback-safe | one release | readable with stock `psql`; no triggers or functions in the schema |
+| Runner protocol | mixed-version | 3 months | runners upgrade on their own schedule |
+| Archived logs in object storage | forward-migrated | | plain compressed text, readable without the service |
+| `ci status --json` | public contract | 6 months deprecation | scripts and agents depend on it |
 
 ## Reference deployments
 

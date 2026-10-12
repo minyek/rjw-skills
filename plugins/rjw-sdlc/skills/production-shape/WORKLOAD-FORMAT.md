@@ -29,6 +29,7 @@ An operation, entity, store or dependency earns an entry when getting its scale 
 - **Shared entities**: as in a component's Entities table.
 - **Usage**: the dominant user-visible operations (requests, UI actions, public API calls), each named: arrival (open rate, or closed population and think time), rate, work per operation, latency, staleness tolerated.
 - **Dependencies and budgets**: external services, OS facilities and hardware: what they are used for, their budget (rate limits, cost, limits, capacity) and availability (delivery guarantees, may be absent, refusable at runtime).
+- **Evolution**: per surface that outlives a process (wire protocol, persisted store, schema, public API): its level from [EVOLUTION.md](EVOLUTION.md), its window, and refinements ("readable by stock tools").
 - **Reference deployments**: example installations or platforms with this system's share of them.
 - **Bounded consumers**: GUIs, TUIs, CLIs, agent-facing output: result limits and partiality signals.
 - **Recording guidance**: what components under this file record beyond the standard format (for example syscalls per operation, or billed requests).
@@ -43,6 +44,7 @@ Open with the entry rule in one line, then:
 - **Derived checks**: as above.
 - **Provided operations**: each with the parent operation that calls it and, per invocation, the work it does below: calls, reads, writes, syscalls, transfers, temporaries and what sizes them. Lifecycle work (build, rebuild, rescan, archive) is operations too, with its trigger.
 - **Stores**: access patterns (key or predicate, order, result size, frequency) and maintenance (inserts, updates, deletes, refreshes, retention).
+- **Evolution**: only where a surface here differs from the level its ancestors give it.
 
 ## Layout rules
 

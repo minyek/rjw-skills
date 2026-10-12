@@ -3,7 +3,7 @@
 Design and review data-touching work with the `production-shape` skill: production shape,
 profiler test, naive shape, workload note, candidate walk, bounded consumer, snapshot then
 deltas, query cover, operation lowering, single writer, steady state, match the defence to
-the boundary.
+the boundary, evolution level.
 
 Root file: every absolute number lives here. Component `WORKLOAD.md` files state numbers per
 parent and refer to these by the names in backticks.
@@ -47,6 +47,14 @@ else refers to these by the name in backticks.
 | `fs.watch` (inotify / FSEvents) | change events | Linux: `inotify.max_user_watches`, often 8,192 on older defaults, shared with the editor; macOS: one stream per root | events coalesce and can overflow; overflow means "rescan this subtree" |
 | `fd.limit` | open files | macOS default soft limit 256, shared with the process | |
 | `disk` (local SSD) | reading sources, index storage | ~1 GB/s sequential read; `stat` ~2 µs warm | page cache shared with the editor and builds |
+
+## Evolution
+
+| Surface | Level | Window | Refinements |
+|---|---|---|---|
+| Index | rebuildable | | format version in the header; rebuild on mismatch |
+| User settings | forward-migrated | | |
+| `cs query --json` | public contract | 2 releases deprecation | |
 
 ## Reference deployments
 
