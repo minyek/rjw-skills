@@ -29,7 +29,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 2. **Decide each axis that applies.** Read the axis file for every axis the work touches; change propagation and query model are coupled.
    - Data structures, layout, memory and steady state: [DATA-AND-MEMORY.md](DATA-AND-MEMORY.md)
    - Change propagation: [PROPAGATION.md](PROPAGATION.md)
-   - Query model (replication, cache, federation): [QUERY-MODEL.md](QUERY-MODEL.md)
+   - Query model (cache, materialized view, replica, federation, at every tier boundary): [QUERY-MODEL.md](QUERY-MODEL.md)
    - Operation lowering (who decides how operations execute, pushdown to backends): [LOWERING.md](LOWERING.md)
    - Concurrency, ownership and backpressure: [CONCURRENCY.md](CONCURRENCY.md)
    - Protocol and wire format: [PROTOCOLS.md](PROTOCOLS.md)
@@ -92,6 +92,7 @@ Review is static: arithmetic is the evidence.
 - Report naive shapes separately from size findings. The production shape is often less code, so never trade one against the other in a single finding.
 - On a scale-sensitive path, a missing workload note, or a smaller shape without an expiry and a seam, is a finding. Elsewhere it is not.
 - A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
+- A durable-store read on a per-event, per-request or per-pass path is a finding unless the workload note records why that data is not held resident.
 - A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
 - Check that assumption markers exist where records say they do.
 

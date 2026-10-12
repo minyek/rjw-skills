@@ -2,18 +2,35 @@
 
 Any system that answers questions about data it does not hold in full decides where each query is answered. Decide it per dataset and query, from the data and its consumers; a model used elsewhere in the same system is one candidate among these. Choose this axis together with [PROPAGATION.md](PROPAGATION.md).
 
-The options, by what the local site knows:
+Decide it at **every tier boundary**: between hosts, and also between a process's memory and its own durable store. The durable store holds the truth for durability; it is not automatically the read path. Crossing into it costs decoding, serialization, locks and sometimes a worker hop, so count those crossings like network calls.
 
-- **Full replication**: the whole dataset is local. Any query is answerable locally; cost is storage and the change stream.
-- **Partial replication**: a defined subset is local, and the site can compute **query cover**: whether a given query is fully answerable from what it holds. Answer covered queries locally; route the rest. A conservative cover check is fine. Every result says whether it is **complete** or **partial**, so consumers never mistake a partial answer for the whole.
-- **Cache**: the site knows only which keys it holds. It serves key fetches; it cannot answer a query, because it cannot know what it is missing.
+## Shapes
+
+Named by what the nearer copy can answer and what it guarantees. How each is kept fresh is a separate choice, in [PROPAGATION.md](PROPAGATION.md).
+
+- **Cache** (`k -> v`, or `k -> f(v)` for a cached transform): serves key fetches, and is exactly right when access is by key. It cannot answer a query, because it cannot know which keys it is missing.
+- **Materialized view**: a derived result, rebuildable from the source. It answers the query it was built for, or serves as a common subpart that many queries build on.
+- **Partial replica**: serves a subset of arbitrary source queries. Which queries it covers is knowable (**query cover**), and covered queries always come back within stated correctness bounds. It may omit columns or be lightly transformed. Answer covered queries locally; route the rest. A conservative cover check is fine. Every result says whether it is **complete** or **partial**.
+- **Full replica**: covers every source query, within the same correctness bounds. Cost is memory or storage and the change stream.
 - **Federation**: the query goes to the owner(s) and results are combined. Cost is latency and the owners' availability.
 
-Decide from:
+Mixed shapes are normal (a resident partial replica of the hot subset, the cold tail queried in the store) when each query's route is stated. Name the shape you build, and give it the guarantees of that shape.
+
+## Decide from
 
 - **Size** of the dataset and of the subset the queries touch, against the workload.
-- **Update frequency** at the source, and so the cost of keeping a replica current.
+- **Access pattern**: by key (cache), one fixed question (materialized view), or varied queries (replica).
+- **Update frequency** at the source, and so the cost of keeping the copy current.
 - **Staleness tolerance** of each consumer.
-- **Why a nearer copy exists**: offline use, a slow source, a rate-limited or budgeted source, a source that costs money per call. Each reason sets different freshness and eviction rules.
+- **Why a nearer copy exists**: a slow, rate-limited or paid source; offline use; or hot-path reads that should not cross into the durable store. Each reason sets different freshness and eviction rules.
 
-Mixed models are normal (replicate the hot subset, federate the tail) when each query's route is stated. Name the model you are building: a TTL cache in front of a query is a cache, and answers as one.
+## Resident copies in a process
+
+A copy held in a process's memory (replica, view or cache) is the production shape when:
+
+- it fits the memory budget at the ceiling ([DATA-AND-MEMORY.md](DATA-AND-MEMORY.md));
+- the process is the single writer of that data, or the store gives it a change stream ([CONCURRENCY.md](CONCURRENCY.md), [PROPAGATION.md](PROPAGATION.md));
+- its startup load fits the startup budget, or it loads progressively and reports partiality until loaded;
+- on restart it rebuilds from the durable store (the rebuildable level in [EVOLUTION.md](EVOLUTION.md)).
+
+Where those conditions fail, the store is the read path, with indexes or views it maintains itself.
