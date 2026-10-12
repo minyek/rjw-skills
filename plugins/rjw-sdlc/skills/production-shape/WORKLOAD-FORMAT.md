@@ -28,7 +28,7 @@ An operation, entity, store or dependency earns an entry when getting its scale 
 - **Scale drivers**: name, now, target, ceiling, growth (trend and named steps), source.
 - **Shared entities**: as in a component's Entities table.
 - **Usage**: the dominant user-visible operations (requests, UI actions, public API calls), each named: arrival (open rate, or closed population and think time), rate, work per operation, latency, staleness tolerated.
-- **Dependencies and budgets**: external services, OS facilities and hardware: what they are used for, their budget (rate limits, cost, limits, capacity) and availability (delivery guarantees, may be absent, refusable at runtime).
+- **Dependencies and budgets**: external services, OS facilities, hardware, and the project's own durable stores (the cost of a read crossing into them): what they are used for, their budget (rate limits, cost, limits, capacity) and availability (delivery guarantees, may be absent, refusable at runtime).
 - **Evolution**: per surface that outlives a process (wire protocol, persisted store, schema, public API): its level from [EVOLUTION.md](EVOLUTION.md), its window, and refinements ("readable by stock tools").
 - **Reference deployments**: example installations or platforms with this system's share of them.
 - **Bounded consumers**: GUIs, TUIs, CLIs, agent-facing output: result limits and partiality signals.

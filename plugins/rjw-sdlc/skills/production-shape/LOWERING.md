@@ -1,6 +1,6 @@
 # Operation lowering
 
-**Operation lowering** is how intent becomes concrete operations: who decides how an operation executes, when, and with what knowledge. Choose the level on purpose, and let the best backend lower its own part: push operations down to whatever can execute them well, with adapters for less capable ones. This applies to storage, queues, kernel operations, renderers, workflows, anything with more than one way to execute.
+**Operation lowering** is how intent becomes concrete operations: who decides how an operation executes, when, and with what knowledge. Choose the level on purpose, and let the best backend lower its own part: push operations down to whatever can execute them well, with adapters for less capable ones. The target is whichever tier answers the query: a resident index in memory is a backend too, so pushing down does not automatically mean pushing into the database. This applies to storage, queues, kernel operations, renderers, workflows, anything with more than one way to execute.
 
 The levels form a spectrum, not strict categories:
 
