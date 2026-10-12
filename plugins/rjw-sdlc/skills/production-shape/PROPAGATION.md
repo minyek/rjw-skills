@@ -9,6 +9,8 @@ Production shapes, pick by what the data and consumers need:
 - **Constant work.** The source pushes its full state on a fixed cadence. Right only when that state is small and bounded at the ceiling: it buys simplicity and predictable load.
 - **Content-addressed sync.** Merkle-tree-like hashing lets two sides compare roots and fetch only differing subtrees. Strong for large, mostly-stable state, peers that reconnect after long gaps, and anti-entropy between replicas.
 
+**Keeping a copy fresh.** Any nearer copy (cache, view or replica, see [QUERY-MODEL.md](QUERY-MODEL.md)) is kept fresh by **pull** (read through, populate on miss, refresh on expiry), **push** (invalidate or apply changes from events) or **rebuild** (recompute from the source). Choose from the consumers' staleness tolerance and the source's update rate. One constraint couples the choice to the shape: pull works only for entries a single source key determines; a singleton, an aggregate or a re-keyed index needs push or rebuild.
+
 **Publish changes of meaning.** A change is something that happened at the source, not a difference in what an observer happened to see. A derived view that briefly cannot see an item reports it as **unknown or unavailable**, which is distinct from **removed**; consumers keep their last known state until the source says otherwise.
 
 **Resync is for when deltas cannot bridge the gap**: the log was compacted, the consumer's position expired, or it never had a baseline. The consumer detects this (sequence numbers, generations, resource versions) and takes a fresh snapshot, or diffs content hashes, then resumes. Resync will happen: make it correct, tested and routine, since it is the correctness backstop.
