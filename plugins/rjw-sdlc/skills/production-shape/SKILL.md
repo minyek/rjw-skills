@@ -33,6 +33,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
    - Operation lowering (who decides how operations execute, pushdown to backends): [LOWERING.md](LOWERING.md)
    - Concurrency, ownership and backpressure: [CONCURRENCY.md](CONCURRENCY.md)
    - Protocol and wire format: [PROTOCOLS.md](PROTOCOLS.md)
+   - Evolution of anything that outlives a process (wire, persisted formats, schemas, public APIs): [EVOLUTION.md](EVOLUTION.md)
    - Failure at boundaries, when the work calls across a process or network boundary: [FAILURE.md](FAILURE.md)
 3. **Run the profiler test.** Done when every axis choice passes or is recorded as a smaller shape.
 4. **Record** the choices following the project's conventions (below).
@@ -44,7 +45,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 - **Locality**: same process, same host, or cross-host.
 - **Resources**: a napkin sketch of network, disk, memory and CPU, each for bandwidth and latency, at the ceiling.
 - **Invariants**: what you know and can exploit: ordering, closed sets, maximum sizes, platform facts.
-- **Bounded consumers**: every result crossing into a GUI, TUI, one process's memory or an agent's context window has a result limit, signals partiality explicitly ("200 of ~40k"), and has a reveal story: paging, progressive disclosure, history windowing and retention.
+- **Bounded consumers**: every result crossing into a GUI, TUI, one process's memory or an agent's context window has a result limit, signals partiality explicitly ("200 of ~40k"), and has a reveal story: paging, progressive disclosure, history windowing and retention. Spend the budget on what the reader can use, in their frame (paths they can reach, names they use) rather than implementation coordinates: for a person or an agent the cost is attention and focus, not just time.
 
 The project's **workload model** is a `WORKLOAD.md` at the repository root plus any nearer the code: walk up from the code you are changing and read each one, nearest first. Together they state maturity, scale drivers, usage, dependencies and budgets, reference deployments and conventions. Read and write them as [WORKLOAD-FORMAT.md](WORKLOAD-FORMAT.md) describes. When the repository has no root file, follow [SETUP.md](SETUP.md); until it exists, size the ceiling at the largest plausible deployment and history. Humans own the root numbers and revise them as load tests and production teach them.
 
@@ -54,6 +55,7 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 
 - **Reasoning rejects** the first answer: the operations at the ceiling are enough.
 - **A candidate walk justifies** a choice, including a custom structure: list the properties the operations need, and reject each standard candidate by the property it fails.
+- **Claims about a dependency** (what it can or cannot do, what it guarantees) cite its source or documentation, not memory.
 - **Claims about numbers** ("the simple shape holds on this hot path", "fits the memory budget") take basic timing or a profile. Inspect generated code only for hot loops where timing cannot explain the result.
 - **Mark assumptions** a shape relies on (closed set, ordering, maximum size, platform) where the code depends on them, with an assert or a named marker, so a broken assumption points at every dependent site. Assume what you know; keep what you expect to change behind a seam.
 
@@ -90,6 +92,7 @@ Review is static: arithmetic is the evidence.
 - Report naive shapes separately from size findings. The production shape is often less code, so never trade one against the other in a single finding.
 - On a scale-sensitive path, a missing workload note, or a smaller shape without an expiry and a seam, is a finding. Elsewhere it is not.
 - A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
+- A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
 - Check that assumption markers exist where records say they do.
 
 ## Scope

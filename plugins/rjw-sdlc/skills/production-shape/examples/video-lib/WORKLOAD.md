@@ -3,7 +3,7 @@
 Design and review data-touching work with the `production-shape` skill: production shape,
 profiler test, naive shape, workload note, candidate walk, bounded consumer, snapshot then
 deltas, query cover, operation lowering, single writer, steady state, match the defence to
-the boundary.
+the boundary, evolution level.
 
 Root file. A library has no deployment of its own: callers set the scales, so the drivers
 below are **parameters**, and now / target / ceiling read as typical caller / supported /
@@ -45,6 +45,14 @@ The public API calls that matter.
 | `gpu` | kernels, residency | `gpu.memory`; compute queues shared with the caller's rendering | may be absent |
 | `host_device_link` | moving frames between CPU and GPU memory | PCIe x16 ~25 GB/s; unified memory: no copy | |
 | `hw_codec` | hardware decode and encode | concurrent sessions are driver-limited, often single digits on consumer GPUs | sessions can be refused at runtime |
+
+## Evolution
+
+| Surface | Level | Window | Refinements |
+|---|---|---|---|
+| Public API | public contract | one major version | semver |
+| Serialized pipeline graphs | mixed-version | | callers store and reload them across library versions |
+| Kernel cache on disk | rebuildable | | keyed by library version and ISA |
 
 ## Reference deployments
 
