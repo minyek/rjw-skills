@@ -6,7 +6,8 @@ Decide what happens when the other side of a boundary is slow, down, absent or w
 
 **Domain rules belong to the domain.** A rule a domain expert would state (a lawyer cannot act for both sides of a transaction; an issuer cannot sell protection on itself) is checked in domain code, where the context it needs is in view and it can change with the business. Data-representation layers enforce well-formedness only: types, nullability, referential integrity, key uniqueness. A refined type such as `ValidTransaction` is fine when only the domain check can construct it.
 
-- **Problems can be values.** When someone will act on them (fix, review, waive), keep the entity and every problem found together as data, rather than forcing them into control flow: an exception or an either-or result stops at the first problem and drops the value.
+- **Shape the report by what the caller does next.** An operation that cannot proceed fails with an error. When someone will work through the problems (fix, review, waive), report them all as values; an either-or result stops at the first and loses the rest.
+- **Problems are derived** from the entity and the rules in force, usually on demand. Where they are kept, keep them as derived data (alerts, logs, roll-ups into higher-level problems), not on the entity.
 - **Each problem names the rule and the parties**, in the domain's terms, never a constraint name or an error code from the store.
 - **Run the check atomically with the write it guards**: a single writer for the aggregate, or a transaction over everything the check reads. Taking a rule out of the store gives up the atomicity the store was providing.
 
