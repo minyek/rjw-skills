@@ -94,6 +94,7 @@ Review is static: arithmetic is the evidence.
 - A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
 - A durable-store read on a per-event, per-request or per-pass path is a finding unless the workload note records why that data is not held resident.
 - A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
+- A domain rule enforced only as a schema constraint or a basic-type restriction is a finding, as is one checked apart from the write it guards.
 - Check that assumption markers exist where records say they do.
 
 ## Scope
