@@ -24,5 +24,8 @@ Derived checks (values as of 2026-09):
 
 **Rescan** (called by: overflow, or on resume after sleep)
 - Walk the affected subtree: 1 `stat` per file; emit files whose mtime or size differ from
-  the index's metadata. This is the resync path: compare against metadata, then resume
-  events.
+  the index's metadata, and removals for indexed files the walk did not find. This is the
+  resync path: compare against metadata, then resume events.
+- A `stat` that fails (permission, transient I/O) marks the file unknown, not removed.
+- While a repo's watch is lost, its index entries are kept and marked stale until the
+  rescan completes.

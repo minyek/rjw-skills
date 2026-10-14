@@ -58,7 +58,7 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 - **A candidate walk justifies** a choice, including a custom structure: list the properties the operations need, and reject each standard candidate by the property it fails.
 - **Claims about a dependency** (what it can or cannot do, what it guarantees) cite its source or documentation, not memory.
 - **Claims about numbers** ("the simple shape holds on this hot path", "fits the memory budget") take basic timing or a profile. Inspect generated code only for hot loops where timing cannot explain the result.
-- **Find resident waste by census**, not by guess. Count what a structure holds by kind: values against distinct values (the **duplication ratio**), and string-keyed maps against distinct keysets (the **shape count**), counting each shared allocation once. A counting allocator gives the total and a heap profiler the allocation sites. Keep the census and the measurement as code, run against a recorded real workload, so the next change reruns them.
+- **Find resident waste by census**, not by guess. Count what a structure holds by kind: values against distinct values (the **duplication ratio**), and string-keyed maps against distinct keysets (the **shape count**), counting each shared allocation once. A counting allocator gives the total and a heap profiler the allocation sites. Where resident size is a recurring budget, keep the census as code run against a recorded real workload, so the next change reruns it.
 - **Mark assumptions** a shape relies on (closed set, ordering, maximum size, platform) where the code depends on them, with an assert or a named marker, so a broken assumption points at every dependent site. Assume what you know; keep what you expect to change behind a seam.
 
 ## Project conventions
@@ -95,9 +95,9 @@ Review is static: arithmetic is the evidence.
 - On a scale-sensitive path, a missing workload note, or a smaller shape without an expiry and a seam, is a finding. Elsewhere it is not.
 - A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
 - A durable-store read on a per-event, per-request or per-pass path is a finding unless the workload note records why that data is not held resident.
-- On a per-event path, work proportional to the whole state for each change is a naive shape: the production shape recomputes only what the change's inputs reach ([INVALIDATION.md](INVALIDATION.md)).
-- A per-item lease on a collection that grows with use, without a recorded constant-work choice, is a finding. So is a design without time-based expiry that does not say how a lost removal is recovered.
-- A per-entry field that no operation reads is a finding: it costs its size times the count.
+- On a per-event path, work proportional to the whole state for each change is a naive shape, unless that state is small and bounded at the ceiling: the production shape recomputes only what the change's inputs reach ([INVALIDATION.md](INVALIDATION.md)).
+- A per-item lease on facts that share one source and grow with use, without a recorded constant-work choice, is a finding. So is a design without time-based expiry that does not say how a lost removal is recovered.
+- A per-entry field with no named reader is a finding: it costs its size times the count.
 - A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
 - A domain rule enforced only as a schema constraint or a basic-type restriction is a finding, as is one checked apart from the write it guards.
 - Check that assumption markers exist where records say they do.
