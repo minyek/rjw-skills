@@ -21,8 +21,8 @@ Done when the root file exists, the user has confirmed its numbers and conventio
 
 Design and review data-touching work with the `production-shape` skill: production shape,
 profiler test, naive shape, workload note, candidate walk, bounded consumer, snapshot then
-deltas, query cover, operation lowering, single writer, steady state, match the defence to
-the boundary, evolution level.
+deltas, source liveness, removal is a message, query cover, operation lowering, single writer,
+steady state, census, spine, match the defence to the boundary, evolution level.
 
 ## Maturity
 

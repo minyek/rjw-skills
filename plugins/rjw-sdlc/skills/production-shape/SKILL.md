@@ -15,7 +15,7 @@ The comparison is never build cost against build cost. It is build cost now agai
 
 Picture an expert performance engineer profiling this at the project's ceiling a year from now. If they would be shocked at how naive it is, it is not the cheap option.
 
-Make it concrete rather than imagined: for the hottest operation, write its cost at the ceiling (operations times cardinality, bytes moved, round trips) and the resident size. The test passes when those numbers fit the reference deployments' budgets and the expert would find nothing large left on the table.
+Make it concrete rather than imagined: for the hottest operation, write its cost at the ceiling (operations times cardinality, bytes moved, round trips) and the resident size. On a per-event path, the hottest operation is one event: write its cost per change. The test passes when those numbers fit the reference deployments' budgets and the expert would find nothing large left on the table.
 
 ## How much to do
 
@@ -26,9 +26,10 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 ## Steps
 
 1. **Write the workload note** (below). Done when each field has a value or a named gap.
-2. **Decide each axis that applies.** Read the axis file for every axis the work touches; change propagation and query model are coupled.
+2. **Decide each axis that applies.** Read the axis file for every axis the work touches; change propagation is coupled to query model and to invalidation.
    - Data structures, layout, memory and steady state: [DATA-AND-MEMORY.md](DATA-AND-MEMORY.md)
    - Change propagation: [PROPAGATION.md](PROPAGATION.md)
+   - Invalidation (how a fact ends: source liveness, leases, removal, derived state): [INVALIDATION.md](INVALIDATION.md)
    - Query model (cache, materialized view, replica, federation, at every tier boundary): [QUERY-MODEL.md](QUERY-MODEL.md)
    - Operation lowering (who decides how operations execute, pushdown to backends): [LOWERING.md](LOWERING.md)
    - Concurrency, ownership and backpressure: [CONCURRENCY.md](CONCURRENCY.md)
@@ -57,6 +58,7 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 - **A candidate walk justifies** a choice, including a custom structure: list the properties the operations need, and reject each standard candidate by the property it fails.
 - **Claims about a dependency** (what it can or cannot do, what it guarantees) cite its source or documentation, not memory.
 - **Claims about numbers** ("the simple shape holds on this hot path", "fits the memory budget") take basic timing or a profile. Inspect generated code only for hot loops where timing cannot explain the result.
+- **Find resident waste by census**, not by guess. Count what a structure holds by kind: values against distinct values (the **duplication ratio**), and string-keyed maps against distinct keysets (the **shape count**), counting each shared allocation once. A counting allocator gives the total and a heap profiler the allocation sites. Keep the census and the measurement as code, run against a recorded real workload, so the next change reruns them.
 - **Mark assumptions** a shape relies on (closed set, ordering, maximum size, platform) where the code depends on them, with an assert or a named marker, so a broken assumption points at every dependent site. Assume what you know; keep what you expect to change behind a seam.
 
 ## Project conventions
@@ -93,6 +95,9 @@ Review is static: arithmetic is the evidence.
 - On a scale-sensitive path, a missing workload note, or a smaller shape without an expiry and a seam, is a finding. Elsewhere it is not.
 - A change that adds a store, a dominant operation or a dependency without updating the nearest `WORKLOAD.md` is a finding.
 - A durable-store read on a per-event, per-request or per-pass path is a finding unless the workload note records why that data is not held resident.
+- On a per-event path, work proportional to the whole state for each change is a naive shape: the production shape recomputes only what the change's inputs reach ([INVALIDATION.md](INVALIDATION.md)).
+- A per-item lease on a collection that grows with use, without a recorded constant-work choice, is a finding. So is a design without time-based expiry that does not say how a lost removal is recovered.
+- A per-entry field that no operation reads is a finding: it costs its size times the count.
 - A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
 - A domain rule enforced only as a schema constraint or a basic-type restriction is a finding, as is one checked apart from the write it guards.
 - Check that assumption markers exist where records say they do.
