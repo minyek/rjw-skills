@@ -40,6 +40,14 @@ class FakeApi(bt.Api):
         return self.routes[key]
 
 
+class CreatingApi(FakeApi):
+    """Answers issue creation with a number, as GitHub does."""
+
+    def call(self, method, endpoint, body=None):
+        result = super().call(method, endpoint, body)
+        return {"number": 50} if method == "POST" and endpoint.endswith("/issues") else result
+
+
 def run(argv, api):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
@@ -210,6 +218,32 @@ class OutcomeTests(unittest.TestCase):
         self.assertIn("already closed", plan["errors"][0]["errors"][0])
         self.assertIn("Split before dispatch", plan["actions"][6]["body"])
         self.assertEqual(bt.parse_record(plan["actions"][6]["body"])["state"], "clear")
+
+    def test_sub_issue_with_another_parent_is_reported_not_proposed(self):
+        routes = self.routes()
+        routes["repos/o/r/issues/9"] = issue(REPO, 9, parent="x/y#3")
+        routes["repos/o/r/issues/8"] = issue(REPO, 8, parent="o/r#7")
+        plan = bt.plan_from_verdicts(bt.Tracker(FakeApi(routes)), [
+            {"ref": "o/r#7", "state": "mission", "summary": "tracker", "sub_issues": ["o/r#9", "o/r#8"]}])
+        self.assertNotIn("sub_issue", [a["op"] for a in plan["actions"]])
+        self.assertEqual(len(plan["errors"]), 1)
+        self.assertIn("already has parent x/y#3", plan["errors"][0]["errors"][0])
+
+    def test_new_issue_is_filed_assessed(self):
+        plan = self.plan([{"ref": "o/r#9", "state": "wontfix", "summary": "s", "new_issues": [
+            {"title": "cleat mouse", "body": "b", "type": "Feature", "state": "clear", "summary": "startable",
+             "needs": ["windows"]}]}], vocab={"windows"})
+        a = plan["actions"][0]
+        self.assertEqual((a["type"], a["state"], a["needs"]), ("Feature", "clear", ["windows"]))
+        self.assertEqual(bt.parse_record(a["record"])["state"], "clear")
+        api = CreatingApi(self.routes())
+        bt.Writer(api, bt.Tracker(api)).run(a)
+        self.assertEqual(api.writes[0][2]["labels"], ["triage:clear", "needs:windows"])
+        self.assertEqual(api.writes[0][2]["type"], "Feature")
+        self.assertEqual(api.writes[1][1], "repos/o/r/issues/50/comments")
+        bad = self.plan([{"ref": "o/r#9", "state": "wontfix", "summary": "s",
+                          "new_issues": [{"title": "t", "body": "b", "state": "blocked"}]}])
+        self.assertIn("new issue state", bad["errors"][0]["errors"][0])
 
     def test_needs_vocabulary_is_enforced(self):
         plan = self.plan([{"ref": "o/r#5", "state": "clear", "summary": "s", "needs": ["gpu"]}], vocab={"windows"})

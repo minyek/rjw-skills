@@ -557,6 +557,17 @@ def validate_verdict(v: dict, needs_vocab: set[str] | None = None) -> list[str]:
             errs.append("each new issue needs a title and body")
         if ni.get("repo") and not REPO_RE.match(ni["repo"]):
             errs.append(f"new issue repo {ni['repo']!r} is not owner/name")
+        if ni.get("type") and ni["type"] not in ("Task", "Bug", "Feature", "Brainstorm"):
+            errs.append(f"new issue type {ni['type']!r} must be Task, Bug, Feature or Brainstorm")
+        if ni.get("state") and ni["state"] not in ("clear", "needs-answer", "needs-rewrite", "waiting"):
+            errs.append(f"new issue state {ni['state']!r} must be clear, needs-answer, needs-rewrite or waiting")
+        if ni.get("state") == "needs-answer" and not ni.get("question"):
+            errs.append("new issue in needs-answer requires a question")
+        if ni.get("state") == "waiting" and not ni.get("waiting_on"):
+            errs.append("new issue in waiting requires waiting_on")
+        for n in ni.get("needs", []):
+            if needs_vocab is not None and n not in needs_vocab:
+                errs.append(f"new issue need {n!r} is not in the repo's vocabulary {sorted(needs_vocab)}")
     return errs
 
 
@@ -575,8 +586,19 @@ def plan_from_verdicts(tr: Tracker, verdicts: list[dict], needs_vocab: set[str] 
                                            "superseded_by", "waiting_on", "batching") if v.get(k)}
         kept[ref]["title"] = issue.get("title")
         for ni in v.get("new_issues", []):
-            actions.append({"op": "create_issue", "ref": ref, "repo": ni.get("repo") or repo, "title": ni["title"],
-                            "body": ni["body"] + f"\n\n_Proposed while triaging {ref}._", "why": ni["title"]})
+            a = {"op": "create_issue", "ref": ref, "repo": ni.get("repo") or repo, "title": ni["title"],
+                 "body": ni["body"] + f"\n\n_Proposed while triaging {ref}._", "why": ni["title"]}
+            if ni.get("type"):
+                a["type"] = ni["type"]
+            if ni.get("needs"):
+                a["needs"] = sorted(ni["needs"])
+            if ni.get("state"):
+                a["state"] = ni["state"]
+                a["record"] = render_record({"state": ni["state"], "summary": ni.get("summary", ""),
+                                             "question": ni.get("question"), "owner": ni.get("owner"),
+                                             "waiting_on": ni.get("waiting_on"), "needs": ni.get("needs", []),
+                                             "commit": v.get("commit")}, at)
+            actions.append(a)
         if state in CLOSING:
             why = {"superseded": f"superseded by {v.get('superseded_by')}", "done": "already done", "wontfix": "won't do"}[state]
             actions.append({"op": "close", "ref": ref, "reason": CLOSE_REASON[state], "comment": render_record(v, at),
@@ -587,6 +609,13 @@ def plan_from_verdicts(tr: Tracker, verdicts: list[dict], needs_vocab: set[str] 
             if type_of(issue) != new_type:
                 actions.append({"op": "type", "ref": ref, "type": new_type, "why": f"{state}: " + v.get("summary", "")})
             for child in v.get("sub_issues", []) if state == MISSION else []:
+                parent = ref_from_api_url(tr.issue(child).get("parent_issue_url") or "")
+                if parent == ref:
+                    continue
+                if parent:
+                    errors.append({"ref": ref, "errors": [f"sub-issue {child} already has parent {parent} "
+                                                          "(GitHub allows one); link not proposed"]})
+                    continue
                 actions.append({"op": "sub_issue", "ref": ref, "child": child, "why": "child of this mission"})
             if triage_label(issue):
                 actions.append({"op": "unlabel", "ref": ref, "why": f"{state} leaves triage scope"})
@@ -626,7 +655,8 @@ def describe(a: dict) -> str:
             "unlabel": lambda: "remove its triage:* label",
             "needs": lambda: "set needs labels: " + (", ".join(a["needs"]) or "none"),
             "sub_issue": lambda: f"add sub-issue {a['child']}",
-            "create_issue": lambda: f"file new issue in {a['repo']}",
+            "create_issue": lambda: f"file new issue in {a['repo']}" + (f" as {a['type']}" if a.get("type") else "")
+                                    + (f", triage:{a['state']}" if a.get("state") else ""),
             "create_label": lambda: f"create label {a['name']}"}[a["op"]]()
     target = a.get("ref") or a.get("repo")
     return f"{a['n']:>3}. {target}: {what}" + (f": {a['why']}" if a.get("why") and a["op"] != "record" else "")
@@ -689,7 +719,15 @@ class Writer:
         self.api.call("POST", f"repos/{repo}/issues/{n}/sub_issues", {"sub_issue_id": self.tr.issue(a["child"])["id"]})
 
     def op_create_issue(self, a):
-        self.api.call("POST", f"repos/{a['repo']}/issues", {"title": a["title"], "body": a["body"]})
+        body = {"title": a["title"], "body": a["body"]}
+        if a.get("type"):
+            body["type"] = a["type"]
+        labels = ([f"triage:{a['state']}"] if a.get("state") else []) + [NEEDS_PREFIX + n for n in a.get("needs", [])]
+        if labels:
+            body["labels"] = labels
+        created = self.api.call("POST", f"repos/{a['repo']}/issues", body) or {}
+        if a.get("record") and created.get("number"):
+            self.api.call("POST", f"repos/{a['repo']}/issues/{created['number']}/comments", {"body": a["record"]})
 
     def op_create_label(self, a):
         self.api.call("POST", f"repos/{a['repo']}/labels", {"name": a["name"], "color": a["color"], "description": a["description"]})

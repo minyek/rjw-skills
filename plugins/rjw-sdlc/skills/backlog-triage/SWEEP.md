@@ -48,11 +48,15 @@ Fill in the brackets.
   "sub_issues": ["mission only: the tracker's open children, owner/repo#N"],
   "split": "true when startable but too big for one convoy",
   "needs": ["dispatch constraints from the repo's [needs] vocabulary, e.g. windows"],
-  "new_issues": [{"title": "...", "body": "...", "repo": "owner/name, default this issue's repo"}],
+  "new_issues": [{"title": "...", "body": "...", "repo": "owner/name, default this issue's repo",
+                  "type": "Task | Bug | Feature | Brainstorm", "state": "clear | needs-answer | needs-rewrite | waiting",
+                  "summary": "...", "question": "...", "waiting_on": "...", "needs": ["..."]}],
   "confidence": "high | medium | low"
 }
 ```
 
 List every open blocker, **recorded or not**; `plan` proposes the missing native edges. Don't downgrade an unrecorded blocker to a question.
+
+Assess each new issue as you propose it: give it a `type` and a `state` with its summary (and a question or `waiting_on` where the state needs one), so it is filed already triaged. A new issue can't be `blocked`; file it, then triage it. A mission's `sub_issues` must have no other parent: GitHub allows one, and `plan` reports a child that already has one instead of linking it.
 
 `blockers` lists open blockers only. `plan` rejects a verdict missing the field its state requires: a question for `needs-answer`, blockers for `blocked`, `waiting_on` for `waiting`, `superseded_by` for `superseded`.

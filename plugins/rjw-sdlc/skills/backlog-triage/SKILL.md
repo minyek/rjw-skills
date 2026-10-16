@@ -74,7 +74,7 @@ Also note, when you see it:
 
 - **Batching:** which issues share files or components, which should stack as one convoy, which would collide if run in parallel.
 - **Type:** if the issue has no issue type, propose one: `Task`, `Bug` or `Feature`. Research and investigation are `Task`; `Brainstorm` comes from `park`.
-- **New issues:** work you found that has no issue yet, such as a follow-up or a piece split off. Put these in `new_issues`; they are filed only if approved.
+- **New issues:** work you found that has no issue yet, such as a follow-up or a piece split off. Put these in `new_issues`, each with its own type and state, so it is filed already assessed; they are filed only if approved.
 
 Write the verdict as JSON (schema in [SWEEP.md](SWEEP.md#verdict-schema)), with the commit you assessed against and the paths your evidence rests on, so staleness can be detected later.
 
