@@ -12,7 +12,7 @@ import sys
 import tempfile
 import textwrap
 import time
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import ClassVar
 import unittest
 from unittest import mock
@@ -144,6 +144,7 @@ class CliHarness(unittest.TestCase):
         self.env.pop("FLOTILLA_CREW_ID", None)
         self.env.pop("PR_SHEPHERD_AS", None)
         self.env.pop("GH_HOST", None)
+        self.env["PR_SHEPHERD_CACHE_DIR"] = str(self.root / "cache")
 
         # The helper runs inside a checkout of owner/repo on branch
         # `shepherded`; it reads the repository from the git remote.
@@ -677,6 +678,41 @@ class PrShepherdCliTest(CliHarness):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--as flotila-crew[bot]", result.stderr)
+
+
+class CacheDirTest(CliHarness):
+    """The response cache lives where the caller says, or under the
+    platform temp directory, which honours TMPDIR."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.env["FAKE_GH_PULL"] = self.pull()
+
+    def cached_names(self, directory: Path) -> list[str]:
+        return sorted(p.name for p in directory.glob("*.json"))
+
+    def test_status_caches_under_the_configured_directory(self) -> None:
+        configured = self.root / "configured-cache"
+        self.env["PR_SHEPHERD_CACHE_DIR"] = str(configured)
+
+        result = self.run_cli("status", str(self.pr_number), "--brief")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"pr_{self.pr_number}_checks.json", self.cached_names(configured))
+
+    def test_default_cache_follows_tmpdir(self) -> None:
+        tmpdir = self.root / "tmpdir"
+        tmpdir.mkdir()
+        self.env.pop("PR_SHEPHERD_CACHE_DIR")
+        self.env["TMPDIR"] = str(tmpdir)
+
+        result = self.run_cli("status", str(self.pr_number), "--brief")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            f"pr_{self.pr_number}_checks.json",
+            self.cached_names(tmpdir / "pr_shepherd_cache"),
+        )
 
 
 class PerFindingTest(CliHarness):
@@ -1461,6 +1497,11 @@ class WaitPacingTest(CliHarness):
         if len(self.sleeps) in self.timeline:
             os.environ["FAKE_GH_CHECK_RUNS"] = json.dumps(self.timeline[len(self.sleeps)])
 
+    def fake_clock(self) -> SimpleNamespace:
+        # Replaces the helper's `time` global only. Patching attributes of the
+        # shared `time` module would also reach subprocess's own wait loop.
+        return SimpleNamespace(sleep=self.fake_sleep, time=lambda: self.now)
+
     def wait(self, interval: int = 60, timeout: int = 900) -> dict:
         args = argparse.Namespace(
             pr_number=self.pr_number, timeout=timeout, interval=interval,
@@ -1468,8 +1509,7 @@ class WaitPacingTest(CliHarness):
         )
         out = io.StringIO()
         with mock.patch.dict(os.environ, self.env, clear=True), \
-                mock.patch.object(self.helper.time, "sleep", self.fake_sleep), \
-                mock.patch.object(self.helper.time, "time", lambda: self.now), \
+                mock.patch.object(self.helper, "time", self.fake_clock()), \
                 mock.patch.object(self.helper, "_load_ci_ema", lambda: None), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             self.helper.cmd_wait_for_checks(args)

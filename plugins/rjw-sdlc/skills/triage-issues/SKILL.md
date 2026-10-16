@@ -1,6 +1,6 @@
 ---
 name: triage-issues
-description: Use when reviewing, labeling, closing, or organizing GitHub issues — especially after a batch of PRs merged, before planning sprints, or when issue state has drifted from reality
+description: Use when reviewing, labeling, closing, or organizing a repository's GitHub Issues (not Jira or other trackers), especially after a batch of PRs merged, before planning sprints, or when issue state has drifted from reality
 ---
 
 # Triaging Issues

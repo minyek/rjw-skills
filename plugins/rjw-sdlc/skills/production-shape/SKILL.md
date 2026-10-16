@@ -1,6 +1,6 @@
 ---
 name: production-shape
-description: Use when designing a data path (a store, index, cache, sync, protocol, backend abstraction, or a listing a person or agent reads), when changing one on a scale-sensitive path, or when reviewing either. Chooses each design axis against the project's reference scales.
+description: Use when designing a data path (a store, index, cache, sync, protocol, backend abstraction, or a listing a person or agent reads), when changing one on a scale-sensitive path, or when reviewing either.
 ---
 
 # Production Shape
@@ -57,7 +57,7 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 - **Reasoning rejects** the first answer: the operations at the ceiling are enough.
 - **A candidate walk justifies** a choice, including a custom structure: list the properties the operations need, and reject each standard candidate by the property it fails.
 - **Claims about a dependency** (what it can or cannot do, what it guarantees) cite its source or documentation, not memory.
-- **Claims about numbers** ("the simple shape holds on this hot path", "fits the memory budget") take basic timing or a profile. Inspect generated code only for hot loops where timing cannot explain the result.
+- **Claims about numbers** ("the simple shape holds on this hot path", "fits the memory budget") take basic timing or a profile. Inspect generated code only for hot loops where timing cannot explain the result. Keep that timing in a benchmark or performance suite, never in functional tests, which must not fail on a slow or loaded machine.
 - **Find resident waste by census**, not by guess. Count what a structure holds by kind: values against distinct values (the **duplication ratio**), and string-keyed maps against distinct keysets (the **shape count**), counting each shared allocation once. A counting allocator gives the total and a heap profiler the allocation sites. Where resident size is a recurring budget, keep the census as code run against a recorded real workload, so the next change reruns it.
 - **Mark assumptions** a shape relies on (closed set, ordering, maximum size, platform) where the code depends on them, with an assert or a named marker, so a broken assumption points at every dependent site. Assume what you know; keep what you expect to change behind a seam.
 

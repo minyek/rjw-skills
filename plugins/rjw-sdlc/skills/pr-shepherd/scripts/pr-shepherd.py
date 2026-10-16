@@ -62,13 +62,17 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import quote
 
 # ── Caching ────────────────────────────────────────────────────────────
 
-CACHE_DIR = Path("/tmp/pr_shepherd_cache")
+CACHE_DIR = Path(
+    os.environ.get("PR_SHEPHERD_CACHE_DIR")
+    or Path(tempfile.gettempdir()) / "pr_shepherd_cache"
+)
 CACHE_TTL = 120  # 2 minutes — PR state changes faster than issue state
 # Marker semantics (rjw-skills#9). A review comment often carries several
 # findings, and the helper can't split them reliably, so it never decides

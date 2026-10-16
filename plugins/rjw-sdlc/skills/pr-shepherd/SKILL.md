@@ -1,12 +1,12 @@
 ---
 name: pr-shepherd
-description: Shepherd a PR through to merge. Resolves conflicts, investigates CI failures, responds to code reviews (fixing valid feedback, pushing back on incorrect suggestions), files follow-up tickets for out-of-scope work, and reports merge readiness.
+description: Use when a GitHub pull request has review comments to answer, failing or pending CI checks, or merge conflicts, or when asked whether a PR is ready to merge.
 argument-hint: "[PR-number]"
 ---
 
 # PR Shepherd
 
-All `scripts/...` paths below are relative to this skill's base directory (announced when the skill loads); resolve them against it.
+All `scripts/...` paths below are relative to this skill's base directory (announced when the skill loads); resolve them against it. Run the helper through `uv run --script`, as the examples do: uv supplies its Python, and the call works even where the script has lost its executable bit. Its response cache goes to `PR_SHEPHERD_CACHE_DIR` when set, otherwise to `pr_shepherd_cache` under the temp directory (`TMPDIR`).
 
 Shepherd a pull request from submission to merge readiness. Re-run it as the PR moves through review cycles.
 
@@ -17,7 +17,7 @@ Shepherd a pull request from submission to merge readiness. Re-run it as the PR 
 **Send all helper-script comment bodies through stdin.** Never put review prose in a shell argument: backticked identifiers can be executed by the shell and silently removed from the posted comment. Use a quoted heredoc:
 
 ```bash
-scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 1 - <<'EOF'
+uv run --script scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 1 - <<'EOF'
 Fixed `CheckoutReconciler` by preserving the existing state transition.
 EOF
 ```
@@ -34,7 +34,7 @@ EOF
 **Name yourself when running as a GitHub App.** The helper treats comments by the PR author and by you as your own, never as feedback to act on. With a user token it asks GitHub who you are. An App installation token can't, so set `PR_SHEPHERD_AS` to the App's bot login (`<app-slug>[bot]`) or pass `--as` before the subcommand:
 
 ```bash
-scripts/pr-shepherd.py --as "my-app[bot]" status "$PR_NUMBER" --brief
+uv run --script scripts/pr-shepherd.py --as "my-app[bot]" status "$PR_NUMBER" --brief
 ```
 
 ## Convergence Loop
@@ -59,7 +59,7 @@ The pickup label clears itself: `reply --all-handled` and `status` both drop it 
 `ack` makes the work visible on GitHub while you work offline. It adds the `shepherd: addressing` label, which means the PR has unanswered review points and is not merge-ready, and a 👀 reaction to each review item you're about to handle. Pass the ids `status`/`reviews` reported:
 
 ```bash
-scripts/pr-shepherd.py ack "$PR_NUMBER" --comment-ids 123 456 789
+uv run --script scripts/pr-shepherd.py ack "$PR_NUMBER" --comment-ids 123 456 789
 ```
 
 Issue comments and inline review comments get the reaction. A submitted review's *body* has no reactions endpoint on GitHub, so `ack` labels the PR and reports that id under `unreactable` instead of reacting; the label (and your eventual reply) is its acknowledgement.
@@ -71,7 +71,7 @@ The reaction is idempotent (an item you already reacted to is skipped) and addin
 `clear` remains as an explicit escape hatch — to drop the label by hand, or where no converging command will run next. It removes the label unconditionally:
 
 ```bash
-scripts/pr-shepherd.py clear "$PR_NUMBER"
+uv run --script scripts/pr-shepherd.py clear "$PR_NUMBER"
 ```
 
 `status` reports `addressing_label` so you can see whether it is currently set.
@@ -81,13 +81,13 @@ scripts/pr-shepherd.py clear "$PR_NUMBER"
 If a PR number was supplied, use it:
 
 ```bash
-scripts/pr-shepherd.py status "$ARGUMENTS" --brief
+uv run --script scripts/pr-shepherd.py status "$ARGUMENTS" --brief
 ```
 
 Otherwise let `status` detect the PR associated with the current branch; it reports a clear error if none exists:
 
 ```bash
-scripts/pr-shepherd.py status --brief
+uv run --script scripts/pr-shepherd.py status --brief
 ```
 
 Read `pr.number` from the result and use it as `PR_NUMBER` for subsequent commands. The brief result contains the merge state, check/review counts, `needs_attention`, and the authoritative `action_items` list. Use the full `status` response only when its additional metadata is useful.
@@ -127,20 +127,20 @@ gh run view <run_id> --log-failed
 - Lint/typecheck failure: fix the code.
 - Infrastructure failure such as a timeout, rate limit, or known flake: report it and recommend `gh run rerun <run-id>`.
 
-Use `scripts/pr-shepherd.py checks "$PR_NUMBER"` only when the status/wait details are insufficient. Commit and push code fixes, and distinguish them from failures needing manual intervention.
+Use `uv run --script scripts/pr-shepherd.py checks "$PR_NUMBER"` only when the status/wait details are insufficient. Commit and push code fixes, and distinguish them from failures needing manual intervention.
 
 ## 4. Process Reviews
 
 Fetch all inline threads, top-level reviews, and issue comments:
 
 ```bash
-scripts/pr-shepherd.py reviews "$PR_NUMBER"
+uv run --script scripts/pr-shepherd.py reviews "$PR_NUMBER"
 ```
 
 When an aggregate entry is truncated or you need to focus on one finding, fetch its complete body directly:
 
 ```bash
-scripts/pr-shepherd.py reviews "$PR_NUMBER" --comment "$COMMENT_ID"
+uv run --script scripts/pr-shepherd.py reviews "$PR_NUMBER" --comment "$COMMENT_ID"
 ```
 
 For each actionable comment, list its findings first: every numbered or bulleted item, each nit, and each point in trailing sections such as "Minor", "Nits", or "Suggestions". A preamble such as "no blocking issues" doesn't cancel the findings after it. Then, for each finding:
@@ -158,11 +158,11 @@ For each actionable comment, list its findings first: every numbered or bulleted
 Commit related review fixes together and push. Then reply to every finding through stdin. Answer findings one reply each, or group them in one reply with a labelled answer per finding. A reply never stands in for findings it doesn't mention.
 
 ```bash
-scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 1 - <<'EOF'
+uv run --script scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 1 - <<'EOF'
 1: Fixed. The state transition now preserves the existing invariant, with a regression test covering the reported case.
 EOF
 
-scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 2 --finding nit-1 --all-handled - <<'EOF'
+uv run --script scripts/pr-shepherd.py reply "$PR_NUMBER" "$COMMENT_ID" --finding 2 --finding nit-1 --all-handled - <<'EOF'
 2: Not changed. `parse` already re-raises: the `except` block on line 40 ends in `raise`, so the error isn't swallowed.
 nit-1: Filed as #123.
 EOF
@@ -173,7 +173,7 @@ Add `--all-handled` only on the reply that leaves no finding in that comment una
 For a top-level comment that is not a response to a specific review comment:
 
 ```bash
-scripts/pr-shepherd.py comment "$PR_NUMBER" - <<'EOF'
+uv run --script scripts/pr-shepherd.py comment "$PR_NUMBER" - <<'EOF'
 Review-cycle summary goes here.
 EOF
 ```
@@ -208,7 +208,7 @@ Reply to the finding with the issue link using the stdin form above (`--finding 
 After pushing changes, wait for both checks and new reviews:
 
 ```bash
-scripts/pr-shepherd.py wait-for-checks "$PR_NUMBER" --check-reviews
+uv run --script scripts/pr-shepherd.py wait-for-checks "$PR_NUMBER" --check-reviews
 ```
 
 The tool owns its pacing. The default timeout is 900 seconds, and shorter timeouts are raised to 300 so that one call is one real wait. It polls every 60 seconds, backing off ×1.5 up to 180 seconds while nothing changes; `--interval` can raise the 60-second base but not lower it. Make one call and act on its result. Don't loop on short waits.
