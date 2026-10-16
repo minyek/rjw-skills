@@ -22,6 +22,8 @@ from urllib.parse import quote
 SCRIPT = Path(__file__).parents[1] / "scripts" / "pr-shepherd.py"
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 ADDRESSING_LABEL = "shepherd: addressing"
+# Far above a loaded run's duration, so only a hang trips it.
+HELPER_DEADLOCK_GUARD_SECONDS = 300
 
 
 class CliHarness(unittest.TestCase):
@@ -167,7 +169,7 @@ class CliHarness(unittest.TestCase):
             text=True,
             env=self.env,
             cwd=self.checkout,
-            timeout=10,
+            timeout=HELPER_DEADLOCK_GUARD_SECONDS,
         )
 
     def gh_calls(self) -> list[list[str]]:

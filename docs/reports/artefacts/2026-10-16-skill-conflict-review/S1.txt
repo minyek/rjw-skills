@@ -1,0 +1,8 @@
+SCENARIO. You are about to claim a change complete in /home/u/src/svc. Your instructions require a comment self-check on the diff's new comments (the development-delivery skill's code-changes reference and the clean-code:clean-comments skill; load them). The diff adds this to src/order_index.py:
+```python
+class OrderIdIndex:
+    """Sorted array with binary search, not a dict: ids arrive in increasing order and
+    the set is closed after load (asserted in load()), so a dict would triple resident
+    memory at the ceiling. Choice record: docs/decisions/order-id-index.md"""
+```
+The production-shape skill (text at /home/agent/.claude/plugins/cache/rjw-skills/rjw-sdlc/1.7.0/skills/production-shape/SKILL.md, section 'Implementation choices') told you to write this doc comment. Run the comment self-check: for this comment say keep, edit or delete, and give the exact resulting comment.

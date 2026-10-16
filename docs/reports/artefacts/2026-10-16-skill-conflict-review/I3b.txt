@@ -1,0 +1,5 @@
+SCENARIO. The user typed `/rjw-sdlc:pr-shepherd 41` in /home/u/src/episodic-memory, your fork of an upstream GitHub project. PR #41 is from your branch `fix-sync-lock` to upstream `main` and fixes a lock-file race in src/sync.ts. The pr-shepherd skill has loaded; its full text is at /home/agent/.claude/plugins/cache/rjw-skills/rjw-sdlc/1.7.0/skills/pr-shepherd/SKILL.md (read it before acting). `reviews 41` shows one actionable review comment (id 9001) from upstream maintainer `obra`:
+"Thanks! Two things:
+1. `acquireLock` in src/sync.ts never releases the lock when `syncOnce` throws. Wrap it in try/finally.
+2. Unrelated to this PR, but `formatDuration` in src/format.ts has an off-by-one: 60 seconds prints as `0m 60s` instead of `1m 0s`."
+You verified both claims against the code; both are true. The correct output for 2 is unambiguous (`1m 0s`); the fix is one comparison (`>` should be `>=`) plus a test. Handle every finding in this comment: what you do about each (code changes, replies with exact text, any issue you would file with exact title and body) and the commands.

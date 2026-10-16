@@ -63,14 +63,14 @@ When you cannot fill a cardinality, ask. When nobody can be asked (an autonomous
 
 ## Project conventions
 
-Record decisions the way the project already does: its decision log, ADR set, PR descriptions, and where implementation-choice records live. The root `WORKLOAD.md` names them. When it names none, ask on first use and add the answer there, so the next run follows it without asking.
+Record decisions the way the project already does: its decision log, ADR set, PR descriptions, and where implementation-choice records live. The root `WORKLOAD.md` names them, or your agent instructions do. When neither does, put the record with the project's existing design records rather than starting a new directory, and raise the location as a question at the next point your instructions allow one. Add the answer to the root `WORKLOAD.md`, so the next run follows it without asking.
 
 ## Implementation choices
 
 Settled choices accumulate where the code is, so later work builds on them instead of re-deriving them.
 
 - **Write a record** when a choice is non-obvious: it rejected a candidate a reasonable engineer would reach for. Ordinary choices get none.
-- **At the code**: one doc comment on the type or module naming the choice and its assumption markers, ending with a link to the record (`docs/implementation-choices/<name>.md` unless the project keeps them elsewhere).
+- **At the code**: one doc comment on the type or module naming the choice and its assumption markers, ending with a link to the record: at the location above, or `docs/implementation-choices/<name>.md` when the project has no design records.
 - **In the record**: the workload numbers it was sized against, the candidate walk with each rejection, the assumptions, and the expiry condition.
 - **Read** a record only for code you are changing. **Revisit** it only when an assumption marker fires, a ceiling it was sized against moves, or the code's operations change; otherwise it is settled.
 - **Escalate to an ADR** (in the project's ADR set and format) when the choice fixes something others depend on: a wire or disk format, or a seam other modules use.

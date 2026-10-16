@@ -1,0 +1,7 @@
+SCENARIO. You are triaging GitHub Issues in /home/u/src/tool, a GitHub-tracked repository; the user asked you to apply your triage, and you have applied labels. The repository has no label reference for agents. Its CLAUDE.md is:
+"# tool
+
+## Memory
+Durable facts about this project live in docs/memory/; one line each here.
+- [Release process](docs/memory/release-process.md): tags vX.Y.Z; CI publishes."
+The triage-issues skill (text at /home/agent/.claude/plugins/cache/rjw-skills/rjw-sdlc/1.7.0/skills/triage-issues/SKILL.md; read it) step 7 applies. Do it: exact files and their content.

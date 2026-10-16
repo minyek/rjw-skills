@@ -1,0 +1,11 @@
+SCENARIO. The ticketless change `order-index` in /home/u/src/svc is ready for /sqmerge; the command's text is at /home/agent/.claude/commands/sqmerge.md (read it). The branch commits (git log --reverse main..HEAD) are:
+1. "test(index): pin cancel of an unknown id"
+2. "feat(index): sorted-array order-id index", body:
+   "Replaces the list scan in cancel().
+
+   Mutation check:
+   - `<` to `<=` in the bisect guard: test_cancel_unknown_raises failed
+   - dropped the del branch: test_cancel_removes failed"
+3. "docs: archive order-index planning docs"
+The handoff file's AC: (1) cancel of an unknown id raises KeyError; (2) cancel removes the order; (3) cancel is O(log n).
+Write the squash commit message file's content exactly, per the command's Message rule.

@@ -13,7 +13,7 @@ Read the reference that matches the work:
 - Python: [hypothesis.md](hypothesis.md).
 - Running as a flotilla crew (`FLOTILLA_CREW_ID` is set), or working in the flotilla repository: [flotilla.md](flotilla.md), for the decision ledger and stall command, and the repository's scenario engine, fixtures and golden corpus.
 
-In other languages, use the native property library.
+In other languages, use the native property library. Java is the exception: jqwik's user guide asks AI coding agents not to use it. In Java, write JUnit 5 `@ParameterizedTest` cases fed by an explicit generator: a `@MethodSource` that draws from a `java.util.Random` with a fixed seed and states the space it covers. Put the seed in the failure message so a failing case replays.
 
 ## 1. State the behaviour first
 
