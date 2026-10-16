@@ -78,6 +78,9 @@ ROLE_LABELS = {
 WAYFINDER_LABELS = {
     f"wayfinder:{t}": ("1D76DB", f"Wayfinder {t} ticket") for t in ("build", "research", "prototype", "grilling", "task")
 } | {"wayfinder:map": ("1D76DB", "Wayfinder mission map")}
+# Roles an assessment replaces: needs-triage means "not yet assessed"; needs-info is needs-answer with the reporter
+# as owner. Setting a triage:* label removes them, so a backlog never carries both.
+REPLACED_ROLES = ("needs-triage", "needs-info")
 CANONICAL = TRIAGE_LABELS | ROLE_LABELS | WAYFINDER_LABELS
 ISSUE_TYPES = ("Task", "Bug", "Feature", "Brainstorm", "Mission", "Lane")
 VALID_TIERS = ("urgent", "high", "medium", "low")
@@ -89,7 +92,7 @@ CLOSING = ("superseded", "done", "wontfix")
 PARK = "park"
 MISSION = "mission"
 LEAVING = (PARK, MISSION)
-CLOSE_REASON = {"superseded": "not_planned", "done": "completed", "wontfix": "not_planned"}
+CLOSE_REASON = {"superseded": "duplicate", "done": "completed", "wontfix": "not_planned"}
 NEEDS_PREFIX = "needs:"
 NEEDS_COLOR = "BFD4F2"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
@@ -216,6 +219,15 @@ class Tracker:
         repo, n = split_ref(ref)
         return self.api.pages(f"repos/{repo}/issues/{n}/comments")
 
+    def me(self) -> str:
+        """Login that writes records: BACKLOG_TRIAGE_AS (needed for an App token, e.g. `app-slug[bot]`), else the token's user."""
+        if not getattr(self, "_me", None):
+            self._me = os.environ.get("BACKLOG_TRIAGE_AS") or self.api.get("user")["login"]
+        return self._me
+
+    def record(self, ref: str, comments: list[dict] | None = None) -> tuple[dict | None, dict | None]:
+        return find_record(self.comments(ref) if comments is None else comments, self.me())
+
 
 def scope_rows(tr: Tracker, repos: list[str], include_ideation=False, include_missions=False) -> list[dict]:
     rows = []
@@ -293,8 +305,12 @@ def parse_record(body: str) -> dict | None:
     return out
 
 
-def find_record(comments: list[dict]) -> tuple[dict | None, dict | None]:
+def find_record(comments: list[dict], author: str) -> tuple[dict | None, dict | None]:
+    """The latest record written by `author`, the identity that applies plans. Anyone can paste the marker,
+    so a record from anyone else is ignored: never read as the assessment, never PATCHed."""
     for c in reversed(comments):
+        if (c.get("user") or {}).get("login") != author:
+            continue
         rec = parse_record(c.get("body", ""))
         if rec is not None:
             return c, rec
@@ -305,7 +321,7 @@ def find_record(comments: list[dict]) -> tuple[dict | None, dict | None]:
 
 def stale_reasons(tr: Tracker, row: dict, max_age_days: int, checkout: Path | None) -> list[str]:
     comments = tr.comments(row["ref"])
-    comment, rec = find_record(comments)
+    comment, rec = tr.record(row["ref"], comments)
     if not rec:
         return ["labelled but has no triage record"]
     reasons = []
@@ -617,7 +633,7 @@ def plan_from_verdicts(tr: Tracker, verdicts: list[dict], needs_vocab: set[str] 
                                                           "(GitHub allows one); link not proposed"]})
                     continue
                 actions.append({"op": "sub_issue", "ref": ref, "child": child, "why": "child of this mission"})
-            if triage_label(issue):
+            if triage_label(issue) or set(labels_of(issue)) & set(REPLACED_ROLES):
                 actions.append({"op": "unlabel", "ref": ref, "why": f"{state} leaves triage scope"})
             actions.append({"op": "record", "ref": ref, "body": render_record(v, at), "why": f"record {state}"})
             continue
@@ -633,7 +649,7 @@ def plan_from_verdicts(tr: Tracker, verdicts: list[dict], needs_vocab: set[str] 
                 errors.append({"ref": ref, "errors": [f"blocker {b['ref']} is already closed; edge not proposed"]})
                 continue
             actions.append({"op": "blocked_by", "ref": ref, "blocker": b["ref"], "why": b.get("why", "")})
-        if triage_label(issue) != f"triage:{state}":
+        if triage_label(issue) != f"triage:{state}" or set(labels_of(issue)) & set(REPLACED_ROLES):
             actions.append({"op": "label", "ref": ref, "state": state, "why": v.get("summary", "")})
         have = sorted(l[len(NEEDS_PREFIX):] for l in labels_of(issue) if l.startswith(NEEDS_PREFIX))
         if sorted(v.get("needs", [])) != have:
@@ -673,7 +689,7 @@ class Writer:
         repo, n = split_ref(a["ref"])
         current = labels_of(self.tr.issue(a["ref"]))
         for l in current:
-            if l in TRIAGE_LABELS and l != f"triage:{a['state']}":
+            if (l in TRIAGE_LABELS and l != f"triage:{a['state']}") or l in REPLACED_ROLES:
                 self.api.call("DELETE", f"repos/{repo}/issues/{n}/labels/{quote(l, safe='')}")
         self.api.call("POST", f"repos/{repo}/issues/{n}/labels", {"labels": [f"triage:{a['state']}"]})
 
@@ -684,7 +700,7 @@ class Writer:
 
     def op_record(self, a):
         repo, n = split_ref(a["ref"])
-        comment, _ = find_record(self.tr.comments(a["ref"]))
+        comment, _ = self.tr.record(a["ref"])
         if comment:
             self.api.call("PATCH", f"repos/{repo}/issues/comments/{comment['id']}", {"body": a["body"]})
         else:
@@ -696,13 +712,13 @@ class Writer:
 
     def op_close(self, a):
         repo, n = split_ref(a["ref"])
-        self.api.call("POST", f"repos/{repo}/issues/{n}/comments", {"body": a["comment"]})
+        self.op_record({"ref": a["ref"], "body": a["comment"]})
         self.api.call("PATCH", f"repos/{repo}/issues/{n}", {"state": "closed", "state_reason": a["reason"]})
 
     def op_unlabel(self, a):
         repo, n = split_ref(a["ref"])
         for l in labels_of(self.tr.issue(a["ref"])):
-            if l in TRIAGE_LABELS:
+            if l in TRIAGE_LABELS or l in REPLACED_ROLES:
                 self.api.call("DELETE", f"repos/{repo}/issues/{n}/labels/{quote(l, safe='')}")
 
     def op_needs(self, a):

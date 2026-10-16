@@ -14,6 +14,8 @@ It reports, per repo: canonical labels that are missing, `priority:*` labels who
 |---|---|
 | `triage:clear`, `triage:blocked`, `triage:needs-answer`, `triage:needs-rewrite`, `triage:waiting` | Triage state; exactly one per assessed issue ([SKILL.md](SKILL.md#states)) |
 | `needs-triage`, `needs-info`, `ready`, `ready-for-human`, `wontfix`, `duplicate` | Triage roles shared with the mattpocock-skills triage flow. `ready` is earned: the body is a dispatchable contract |
+
+**Older roles an assessment replaces.** `needs-triage` means "not yet assessed", which is now the absence of a `triage:*` label. `needs-info` is `triage:needs-answer` with the reporter as owner. Both stay canonical because the mattpocock-skills triage flow applies them, but setting a `triage:*` label removes them, so an issue never carries both.
 | `wayfinder:map`, `wayfinder:build`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task` | Wayfinder missions and ticket types |
 
 Topic labels (`bug`, `ui`, `cli`, …) stay per repo and are outside this skill.
@@ -44,15 +46,4 @@ Org-level: `Task`, `Bug`, `Feature`, `Brainstorm`, `Mission`, `Lane`. Assessment
 - **`docs/agents/triage-labels.md`** mapping the triage roles to label strings, as flotilla has, so skills that speak in roles find the labels.
 - **A token** that can label, comment and add dependencies, for whoever applies plans. Investigators need read access only.
 
-## Remediation (flotilla-org, 2026-10-16)
-
-The first `setup` run across flotilla, cleat, wheelhouse and andamento found:
-
-1. **`triage:*` labels missing everywhere.** Create them in all four repos.
-2. **Triage roles missing outside flotilla.** cleat, wheelhouse and andamento lack `needs-triage`, `needs-info` and `ready-for-human`.
-3. **Wayfinder labels incomplete.** cleat lacks `wayfinder:map`; wheelhouse lacks `wayfinder:build`; andamento lacks the wayfinder ticket labels.
-4. **Invalid priorities in cleat:** `priority:later` (17 open issues) and `priority:soon` (8). `priority:next` is unused. Dispatch accepts only `urgent`, `high`, `medium` and `low`, and an invalid explicit priority can fail the project closed once readiness is live. Map each issue to a valid tier or remove the label, then delete the three labels. This needs the maintainer's call on the mapping.
-5. **Untyped open issues:** flotilla 65, cleat 81, wheelhouse 78, andamento 24. Sweeps propose types; a separate pass can type the rest.
-6. **`docs/agents/triage-labels.md`:** flotilla has one; add it to the others, with the `triage:*` rows.
-
-Steps 1–3 and 6 are mechanical. Steps 4 and 5 need decisions per issue.
+A repo's own gaps (missing labels, invalid priorities, untyped issues) are installation state: record the remediation in an issue in that repo or org, not here.

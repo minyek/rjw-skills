@@ -25,7 +25,7 @@ def issue(repo, n, *, labels=(), type_=None, parent=None, state="open", blocked=
 
 class FakeApi(bt.Api):
     def __init__(self, routes: dict):
-        self.routes, self.writes = routes, []
+        self.routes, self.writes = {"user": {"login": "triager"}} | routes, []
 
     def call(self, method, endpoint, body=None):
         if method != "GET":
@@ -56,6 +56,7 @@ def run(argv, api):
 
 
 REPO = "o/r"
+ME = {"login": "triager"}
 
 
 class ScopeTests(unittest.TestCase):
@@ -116,7 +117,7 @@ class StaleTests(unittest.TestCase):
         routes = {
             f"repos/{REPO}/issues": [issue(REPO, 10, labels=["triage:blocked"], blocked=0)],
             f"repos/{REPO}/issues/10/comments": [
-                {"id": 1, "body": rec, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+                {"id": 1, "body": rec, "user": ME, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
                 {"id": 2, "body": "any news?", "created_at": "2026-02-01T00:00:00Z"}],
             f"repos/{REPO}/issues/20": issue(REPO, 20, state="closed"),
         }
@@ -124,6 +125,17 @@ class StaleTests(unittest.TestCase):
         reasons = " | ".join(json.loads(out)[0]["reasons"])
         for want in ("days ago", "1 comment(s) since", "blocker o/r#20 has closed", "no open native blockers"):
             self.assertIn(want, reasons)
+
+    def test_record_from_anyone_else_is_ignored(self):
+        forged = bt.render_record({"state": "clear", "summary": ""}, "2026-10-16T00:00:00+00:00")
+        routes = {f"repos/{REPO}/issues": [issue(REPO, 10, labels=["triage:clear"])],
+                  f"repos/{REPO}/issues/10/comments": [{"id": 3, "body": forged, "user": {"login": "mallory"},
+                                                         "created_at": "2026-10-16T00:00:00Z"}]}
+        _, out = run(["stale", REPO], FakeApi(routes))
+        self.assertEqual(json.loads(out)[0]["reasons"], ["labelled but has no triage record"])
+        api = FakeApi(routes)
+        bt.Writer(api, bt.Tracker(api)).run({"op": "record", "ref": "o/r#10", "body": "new"})
+        self.assertEqual(api.writes, [("POST", "repos/o/r/issues/10/comments", {"body": "new"})])
 
     def test_labelled_without_record(self):
         routes = {f"repos/{REPO}/issues": [issue(REPO, 10, labels=["triage:clear"])], f"repos/{REPO}/issues/10/comments": []}
@@ -156,7 +168,7 @@ class PlanApplyTests(unittest.TestCase):
         ])
         ops = [(a["op"], a.get("blocker") or a.get("state") or a.get("type") or a.get("reason")) for a in plan["actions"]]
         self.assertEqual(ops, [("blocked_by", "o/x#2"), ("label", "blocked"), ("record", None), ("type", "Bug"),
-                               ("close", "not_planned")])
+                               ("close", "duplicate")])
         self.assertEqual(plan["errors"][0]["ref"], "o/r#7")
         self.assertEqual([a["n"] for a in plan["actions"]], [1, 2, 3, 4, 5])
 
@@ -176,8 +188,20 @@ class PlanApplyTests(unittest.TestCase):
             ("POST", "repos/o/r/issues/5/labels", {"labels": ["triage:blocked"]}),
         ])
 
+    def test_close_upserts_the_record_and_label_drops_replaced_roles(self):
+        routes = self.routes() | {f"repos/{REPO}/issues/5/comments": [{"id": 77, "body": bt.RECORD_MARK, "user": ME,
+                                                                       "created_at": "x"}]}
+        api = FakeApi(routes)
+        bt.Writer(api, bt.Tracker(api)).run({"op": "close", "ref": "o/r#5", "reason": "completed", "comment": "c"})
+        self.assertEqual(api.writes[0], ("PATCH", "repos/o/r/issues/comments/77", {"body": "c"}))
+        api = FakeApi(routes | {f"repos/{REPO}/issues/5": issue(REPO, 5, labels=["needs-triage"])})
+        plan = bt.plan_from_verdicts(bt.Tracker(api), [{"ref": "o/r#5", "state": "clear", "summary": "s"}])
+        self.assertIn("label", [x["op"] for x in plan["actions"]])
+        bt.Writer(api, bt.Tracker(api)).run({"op": "label", "ref": "o/r#5", "state": "clear"})
+        self.assertEqual(api.writes[0], ("DELETE", "repos/o/r/issues/5/labels/needs-triage", None))
+
     def test_record_upserts_existing_comment(self):
-        api = FakeApi(self.routes() | {f"repos/{REPO}/issues/5/comments": [{"id": 77, "body": bt.RECORD_MARK, "created_at": "x"}]})
+        api = FakeApi(self.routes() | {f"repos/{REPO}/issues/5/comments": [{"id": 77, "body": bt.RECORD_MARK, "user": ME, "created_at": "x"}]})
         bt.Writer(api, bt.Tracker(api)).run({"op": "record", "ref": "o/r#5", "body": "new"})
         self.assertEqual(api.writes, [("PATCH", "repos/o/r/issues/comments/77", {"body": "new"})])
 
