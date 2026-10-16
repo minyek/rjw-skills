@@ -15,6 +15,11 @@ Read subcommands:
     missions REPO...          Mission issues with no child activity for --idle-days
     portfolio REPO...         Markdown snapshot for investigating agents: open issues,
                               recorded blockers, issues closed in the last 30 days
+    group REPO... --components FILE
+                              Sweep groups by area: Jev (TypeSafe System One) asks, per
+                              issue, which components the change edits; issues are grouped
+                              by their most likely component, and uncertain ones flagged
+                              for a stronger investigator. Needs TYPESAFE_API_KEY
 
 Plan subcommands:
     plan VERDICT.json...      Turn agents' verdicts into a numbered action plan (JSON)
@@ -34,10 +39,17 @@ validates each before use.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import time
+import tomllib
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -344,6 +356,151 @@ def portfolio(tr: Tracker, repos: list[str], days: int = 30) -> str:
     return "\n".join(out)
 
 
+
+# ── group: Jev component pass ──────────────────────────────────────────
+
+JEV_API = "https://api.typesafe.ai/v1/systemone"
+JEV_PRICE_PER_TOKEN = 0.042e-6
+BODY_CHARS = 4000
+LIKELY_QUESTION = 0.7
+
+
+def noul(question: str, true: str, false: str, **extra) -> dict:
+    return {"type": "noul", "instructions": {**extra, "question": question}, "criteria": {"true": true, "false": false}}
+
+
+COMPONENT_Q = ("Will the code change that resolves `issue` edit at least one file that belongs to `component`?",
+               "Resolving the issue requires editing source, tests, fixtures or docs inside this component.",
+               "Resolving the issue leaves every file in this component unchanged.")
+SIGNAL_QS = {
+    "kind:bug": noul("Does `issue` report a defect in behaviour that exists today?",
+                     "It describes current behaviour that is wrong.", "It asks for something new, or for investigation or cleanup."),
+    "kind:feature": noul("Does `issue` ask for new behaviour or a new capability?",
+                         "It asks for behaviour that does not exist yet.", "It fixes, investigates or tidies existing behaviour."),
+    "kind:research": noul("Does `issue` ask for investigation, measurement or comparison before any change is decided?",
+                          "The first deliverable is findings, not a change.", "It asks for a change directly."),
+    "contract": noul("Could an engineer with no other context start the change now from the body of `issue` alone?",
+                     "Goal, scope and done-when are all stated or plainly implied.",
+                     "Something essential is missing, unresolved or out of date."),
+    "open_question": noul("Does `issue` leave a design question open that someone other than the implementer must answer first?",
+                          "A choice is explicitly left open and is not delegated to whoever implements it.",
+                          "The approach is settled, or the body leaves the remaining choices to the implementer."),
+}
+
+
+def load_components(path: Path) -> list[dict]:
+    comps = tomllib.loads(path.read_text()).get("component", [])
+    if not comps or any(not c.get("name") for c in comps):
+        raise SystemExit(f"{path}: expected [[component]] tables with a name")
+    return comps
+
+
+class Jev:
+    """TypeSafe System One over HTTP, with a JSON-lines answer cache."""
+
+    def __init__(self, key: str, model: str, cache: Path | None):
+        self.key, self.model, self.cache_path = key, model, cache
+        self.cache: dict[str, dict] = {}
+        self.tokens = 0
+        if cache and cache.exists():
+            for line in cache.read_text().splitlines():
+                if line.strip():
+                    d = json.loads(line)
+                    self.cache[d["k"]] = d["a"]
+
+    def post(self, payload: dict, tries: int = 6) -> dict:
+        req = urllib.request.Request(JEV_API, data=json.dumps(payload).encode(), method="POST",
+                                     headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
+        for t in range(tries):
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    return json.load(resp)
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 529) and t < tries - 1:
+                    time.sleep(float(e.headers.get("retry-after") or 2 ** t))
+                    continue
+                raise RuntimeError(f"Jev HTTP {e.code}: {e.read().decode(errors='replace')[:300]}")
+            except (urllib.error.URLError, TimeoutError):
+                if t == tries - 1:
+                    raise
+                time.sleep(2 ** t)
+        raise RuntimeError("unreachable")
+
+    def ask(self, state: dict, questions: dict) -> dict[str, float]:
+        k = hashlib.sha256(json.dumps([self.model, state, questions], sort_keys=True).encode()).hexdigest()
+        if k not in self.cache:
+            resp = self.post({"model": self.model, "state": state, "questions": questions})
+            self.tokens += resp.get("usage", {}).get("input_tokens", 0)
+            self.cache[k] = {q: v["noul"] for q, v in resp["answers"].items()}
+            if self.cache_path:
+                with self.cache_path.open("a") as f:
+                    f.write(json.dumps({"k": k, "a": self.cache[k]}) + "\n")
+        return self.cache[k]
+
+
+def issue_state(i: dict) -> dict:
+    body = i.get("body") or ""
+    if len(body) > BODY_CHARS:
+        body = body[:BODY_CHARS] + "\n[...truncated]"
+    return {"issue": {"title": i["title"], "labels": labels_of(i), "body": body}}
+
+
+def group_questions(comps: list[dict], repo_name: str) -> dict:
+    qs = {}
+    for c in comps:
+        view = {"name": c["name"], "description": c.get("description", ""), "paths": c.get("paths", []),
+                "repository": repo_name}
+        qs[f"comp:{c['name']}"] = noul(*COMPONENT_Q, component=view)
+    return qs | SIGNAL_QS
+
+
+def group_issues(issues: list[dict], answers: dict[str, dict], max_size: int, min_size: int) -> dict:
+    per = {}
+    for i in issues:
+        ref, a = ref_of(i), answers[ref_of(i)]
+        comps = sorted(((q[5:], p) for q, p in a.items() if q.startswith("comp:")), key=lambda x: -x[1])
+        top, top_p = comps[0] if comps else ("unclear", 0.0)
+        escalate = []
+        if top_p < 0.5:
+            escalate.append(f"no component above 0.5 (best {top} {top_p:.2f})")
+        # Jev's contract and open-question scores on issue text alone barely separate ready
+        # from not-ready (AUC ~0.6 in the flotilla pilot), so they are hints, not escalation.
+        hints = []
+        if a.get("open_question", 0) >= LIKELY_QUESTION:
+            hints.append(f"likely needs-answer: open question p={a['open_question']:.2f}")
+        kinds = {q[5:]: p for q, p in a.items() if q.startswith("kind:")}
+        per[ref] = {"title": i["title"], "area": top if top_p >= 0.5 else "unclear",
+                    "components": {c: round(p, 3) for c, p in comps if p >= 0.2},
+                    "second": comps[1][0] if len(comps) > 1 else None,
+                    "kind": max(kinds, key=kinds.get) if kinds and max(kinds.values()) >= 0.5 else None,
+                    "contract": round(a.get("contract", 0), 3), "open_question": round(a.get("open_question", 0), 3),
+                    "escalate": escalate, "hints": hints}
+    areas: dict[str, list[str]] = {}
+    for ref, r in per.items():
+        areas.setdefault(r["area"], []).append(ref)
+    # fold small areas into the area of each issue's second-best component, when that area exists
+    for area in sorted(areas, key=lambda a: len(areas[a])):
+        if len(areas[area]) >= min_size or area not in areas:
+            continue
+        moved = [ref for ref in areas[area] if per[ref]["second"] in areas and per[ref]["second"] != area
+                 and len(areas[per[ref]["second"]]) >= min_size]
+        for ref in moved:
+            areas[per[ref]["second"]].append(ref)
+            areas[area].remove(ref)
+        if not areas[area]:
+            del areas[area]
+    groups = []
+    for area, refs in sorted(areas.items()):
+        refs.sort(key=lambda r: (per[r]["second"] or "", r))
+        n_chunks = -(-len(refs) // max_size)
+        size = -(-len(refs) // n_chunks)
+        chunks = [refs[k:k + size] for k in range(0, len(refs), size)]
+        for n, chunk in enumerate(chunks, 1):
+            groups.append({"area": area if len(chunks) == 1 else f"{area}-{n}", "refs": chunk,
+                           "escalate": [r for r in chunk if per[r]["escalate"]]})
+    return {"groups": groups, "issues": per}
+
+
 # ── plan / apply ───────────────────────────────────────────────────────
 
 def validate_verdict(v: dict) -> list[str]:
@@ -498,6 +655,12 @@ def main(argv=None, api: Api | None = None) -> int:
                                                                            help="repo=PATH local checkout for path checks")
     s = sub.add_parser("missions"); s.add_argument("repos", nargs="+"); s.add_argument("--idle-days", type=int, default=21)
     s = sub.add_parser("portfolio"); s.add_argument("repos", nargs="+"); s.add_argument("--days", type=int, default=30)
+    s = sub.add_parser("group"); s.add_argument("repos", nargs="+")
+    s.add_argument("--components", type=Path, required=True, help="TOML file of [[component]] name/description/paths")
+    s.add_argument("--refs", help="comma-separated refs to group instead of `scope --untriaged`")
+    s.add_argument("--model", default="jev-1.13.0"); s.add_argument("--cache", type=Path)
+    s.add_argument("--max-size", type=int, default=8); s.add_argument("--min-size", type=int, default=3)
+    s.add_argument("--workers", type=int, default=8)
     s = sub.add_parser("plan"); s.add_argument("verdicts", nargs="+", type=Path)
     s = sub.add_parser("show"); s.add_argument("plan", type=Path)
     s = sub.add_parser("apply"); s.add_argument("plan", type=Path)
@@ -528,6 +691,27 @@ def main(argv=None, api: Api | None = None) -> int:
         emit(mission_rows(tr, repos_arg(a.repos), a.idle_days))
     elif a.cmd == "portfolio":
         print(portfolio(tr, repos_arg(a.repos), a.days))
+    elif a.cmd == "group":
+        key = os.environ.get("TYPESAFE_API_KEY")
+        if not key:
+            sys.exit("group needs TYPESAFE_API_KEY; without it, group the sweep by reading titles (SWEEP.md)")
+        comps = load_components(a.components)
+        repos = repos_arg(a.repos)
+        if a.refs:
+            issues = [tr.issue(r) for r in a.refs.split(",")]
+        else:
+            wanted = {r["ref"] for r in scope_rows(tr, repos) if not r["triage"]}
+            issues = [tr.issue(r) for r in sorted(wanted)]
+        jev = Jev(key, a.model, a.cache)
+        t0 = time.time()
+        with cf.ThreadPoolExecutor(a.workers) as ex:
+            futs = {ref_of(i): ex.submit(jev.ask, issue_state(i), group_questions(comps, split_ref(ref_of(i))[0]))
+                    for i in issues}
+            answers = {r: f.result() for r, f in futs.items()}
+        out = group_issues(issues, answers, a.max_size, a.min_size)
+        out["usage"] = {"issues": len(issues), "input_tokens": jev.tokens,
+                        "usd": round(jev.tokens * JEV_PRICE_PER_TOKEN, 4), "secs": round(time.time() - t0, 1)}
+        emit(out)
     elif a.cmd == "plan":
         verdicts = []
         for p in a.verdicts:

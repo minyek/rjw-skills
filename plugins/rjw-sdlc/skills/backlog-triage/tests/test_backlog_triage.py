@@ -174,6 +174,25 @@ class PlanApplyTests(unittest.TestCase):
         self.assertEqual(api.writes, [("PATCH", "repos/o/r/issues/comments/77", {"body": "new"})])
 
 
+class GroupTests(unittest.TestCase):
+    def test_groups_by_top_component_folds_small_areas_and_splits_evenly(self):
+        issues = [issue(REPO, n) for n in range(1, 12)]
+        answers = {}
+        for n in range(1, 10):            # nine in area a, second choice b
+            answers[f"o/r#{n}"] = {"comp:a": 0.9, "comp:b": 0.6, "open_question": 0.2}
+        answers["o/r#10"] = {"comp:b": 0.8, "comp:a": 0.7, "open_question": 0.9}   # lone b folds into a
+        answers["o/r#11"] = {"comp:a": 0.3, "comp:b": 0.2, "open_question": 0.1}   # unclear, escalated
+        out = bt.group_issues(issues, answers, max_size=8, min_size=3)
+        sizes = {g["area"]: len(g["refs"]) for g in out["groups"]}
+        self.assertEqual(sizes, {"a-1": 5, "a-2": 5, "unclear": 1})
+        self.assertEqual(out["issues"]["o/r#11"]["escalate"], ["no component above 0.5 (best a 0.30)"])
+        self.assertTrue(out["issues"]["o/r#10"]["hints"][0].startswith("likely needs-answer"))
+
+    def test_group_needs_key(self):
+        with mock.patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit):
+            bt.main(["group", REPO, "--components", "x.toml"], FakeApi({}))
+
+
 class SetupTests(unittest.TestCase):
     def test_reports_missing_labels_invalid_priorities_and_untyped(self):
         routes = {f"repos/{REPO}/labels": [{"name": n} for n in bt.CANONICAL if n != "triage:clear"] + [{"name": "priority:soon"}],

@@ -6,8 +6,10 @@ A sweep assesses many issues at once, the way a governor would: group them by ar
 
 1. **List the population.** `scripts/backlog-triage.py scope OWNER/REPO... --untriaged > scope.json`. For a re-sweep, use the refs from `stale` instead.
 2. **Snapshot the tracker** for the investigators: `scripts/backlog-triage.py portfolio OWNER/REPO... > PORTFOLIO.md`. It lists every open issue (type, triage label, mission, labels, title), with issues closed in the last 30 days.
-3. **Group by area.** Aim for 3–8 issues per group, by component, crate or directory, shared labels, or lane. Keep issues that mention each other in the same group. Read titles and skim bodies to group; don't assess yet.
-4. **Spawn one subagent per group, in parallel**, with the brief below. A mid-sized model is enough; reserve the largest for groups the first pass marks low-confidence.
+3. **Group by area.** Aim for 3–8 issues per group.
+   - **With `TYPESAFE_API_KEY` and a component map** (`docs/agents/components.toml` in the repo: `[[component]]` tables with `name`, `description`, `paths`), run `scripts/backlog-triage.py group OWNER/REPO --components docs/agents/components.toml --cache jev-cache.jsonl > groups.json`. Jev answers, per issue, which components the change edits (about a cent for 70 issues). Issues are grouped by their most likely component; small areas fold into each issue's second choice, and large ones split evenly. Each issue carries `escalate` reasons (no component reaches 0.5) and `hints` (a likely open question) to pass to its investigator. Adjust the groups by hand if issues that mention each other were split.
+   - **Otherwise**, group by component, crate or directory, shared labels, or lane, reading titles and skimming bodies. Keep issues that mention each other in the same group. Don't assess yet.
+4. **Spawn one subagent per group, in parallel**, with the brief below. A mid-sized model is enough; give the largest model the groups whose issues are escalated (`unclear`).
 5. **Merge:** `scripts/backlog-triage.py plan group-*.json > plan.json`, then `show` it and seek approval as in [SKILL.md](SKILL.md#record-and-apply). Put each group's batching notes in front of the approver alongside the plan; they are the sweep's most useful output for dispatch.
 
 Note the commit you hand the investigators. A sweep of a fixed commit with a snapshot portfolio is consistent but ages fast: blockers close while it runs. `plan` re-reads native edges, but check `stale` before applying a sweep that is more than a day old.
