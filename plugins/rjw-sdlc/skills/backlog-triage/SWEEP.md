@@ -7,10 +7,10 @@ A sweep assesses many issues at once, the way a governor would: group them by ar
 1. **List the population.** `scripts/backlog-triage.py scope OWNER/REPO... --untriaged > scope.json`. For a re-sweep, use the refs from `stale` instead.
 2. **Snapshot the tracker** for the investigators: `scripts/backlog-triage.py portfolio OWNER/REPO... > PORTFOLIO.md`. It lists every open issue (type, triage label, mission, labels, title), with issues closed in the last 30 days.
 3. **Group by area.** Aim for 3–8 issues per group.
-   - **With `TYPESAFE_API_KEY` and a component map** (`docs/agents/components.toml` in the repo: `[[component]]` tables with `name`, `description`, `paths`), run `scripts/backlog-triage.py group OWNER/REPO --components docs/agents/components.toml --cache jev-cache.jsonl > groups.json`. Jev answers, per issue, which components the change edits (about a cent for 70 issues). Issues are grouped by their most likely component; small areas fold into each issue's second choice, and large ones split evenly. Each issue carries `escalate` reasons (no component reaches 0.5) and `hints` (a likely open question) to pass to its investigator. Adjust the groups by hand if issues that mention each other were split.
+   - **With `TYPESAFE_API_KEY` and a triage config** (`docs/agents/triage.toml` in the repo, see [SETUP.md](SETUP.md)), run `scripts/backlog-triage.py group OWNER/REPO --config docs/agents/triage.toml --cache jev-cache.jsonl > groups.json`. Jev answers, per issue, which components the change edits (about a cent for 70 issues). Issues are grouped by their most likely component; small areas fold into each issue's second choice, and large ones split evenly. Each issue carries `escalate` reasons (no component reaches 0.5) and `hints` (a likely open question) to pass to its investigator. Adjust the groups by hand if issues that mention each other were split.
    - **Otherwise**, group by component, crate or directory, shared labels, or lane, reading titles and skimming bodies. Keep issues that mention each other in the same group. Don't assess yet.
 4. **Spawn one subagent per group, in parallel**, with the brief below. A mid-sized model is enough; give the largest model the groups whose issues are escalated (`unclear`).
-5. **Merge:** `scripts/backlog-triage.py plan group-*.json > plan.json`, then `show` it and seek approval as in [SKILL.md](SKILL.md#record-and-apply). Put each group's batching notes in front of the approver alongside the plan; they are the sweep's most useful output for dispatch.
+5. **Merge:** `scripts/backlog-triage.py plan group-*.json --config docs/agents/triage.toml > plan.json`, then `review` it and seek approval as in [SKILL.md](SKILL.md#record-and-apply). `review` carries each group's batching notes; they are the sweep's most useful output for dispatch.
 
 Note the commit you hand the investigators. A sweep of a fixed commit with a snapshot portfolio is consistent but ages fast: blockers close while it runs. `plan` re-reads native edges, but check `stale` before applying a sweep that is more than a day old.
 
@@ -26,14 +26,14 @@ Fill in the brackets.
 >
 > **How to assess:** follow "Assess one issue" in the backlog-triage skill: done or superseded, prerequisites, open blockers (recorded or not), who decides, outside waits, and whether someone can start from the body. A decision the body leaves to the implementer is not a question. Stop when you can answer with evidence.
 >
-> **Output:** write [path]/group-[area].json as `{"group": "[area]", "verdicts": [...], "batching": "..."}`, one verdict per issue in the schema below. `batching` covers shared files or components, ordering, duplicates, which issues could go in one convoy as a PR stack, and which would collide in parallel. Reply with a five-line summary. Commit nothing.
+> **Output:** write [path]/group-[area].json as `{"group": "[area]", "verdicts": [...], "batching": "..."}`, one verdict per issue in the schema below. `needs` values must come from: [the repo's needs vocabulary]. `batching` covers shared files or components, ordering, duplicates, which issues could go in one convoy as a PR stack, and which would collide in parallel. Reply with a five-line summary. Commit nothing.
 
 ## Verdict schema
 
 ```json
 {
   "ref": "owner/repo#N",
-  "state": "clear | blocked | needs-answer | needs-rewrite | waiting | superseded | done",
+  "state": "clear | blocked | needs-answer | needs-rewrite | waiting | superseded | done | wontfix | mission | park",
   "summary": "one or two sentences: the verdict and the evidence that decides it",
   "question": "needs-answer only: the specific question",
   "owner": "needs-answer only: GitHub login of who must answer, if known",
@@ -44,9 +44,15 @@ Fill in the brackets.
   "paths": ["paths the verdict depends on, relative to the repo root"],
   "commit": "the sha assessed against",
   "batching": "this issue's relation to its neighbours, if any",
-  "type": "Task | Bug | Feature | Brainstorm, only if the issue has no type",
+  "type": "Task | Bug | Feature, only if the issue has no type",
+  "sub_issues": ["mission only: the tracker's open children, owner/repo#N"],
+  "split": "true when startable but too big for one convoy",
+  "needs": ["dispatch constraints from the repo's [needs] vocabulary, e.g. windows"],
+  "new_issues": [{"title": "...", "body": "...", "repo": "owner/name, default this issue's repo"}],
   "confidence": "high | medium | low"
 }
 ```
+
+List every open blocker, **recorded or not**; `plan` proposes the missing native edges. Don't downgrade an unrecorded blocker to a question.
 
 `blockers` lists open blockers only. `plan` rejects a verdict missing the field its state requires: a question for `needs-answer`, blockers for `blocked`, `waiting_on` for `waiting`, `superseded_by` for `superseded`.

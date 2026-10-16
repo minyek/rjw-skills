@@ -18,6 +18,21 @@ It reports, per repo: canonical labels that are missing, `priority:*` labels who
 
 Topic labels (`bug`, `ui`, `cli`, …) stay per repo and are outside this skill.
 
+## Per-repo config: `docs/agents/triage.toml`
+
+```toml
+[[component]]            # 10–20 coarse areas; used by `group` for sweep grouping
+name = "recording"
+description = "Recording and replay of sessions: asciicast output, transcripts, retention."
+paths = ["crates/cleat/src/recording.rs", "crates/cleat/src/replay.rs"]
+
+[needs]                  # dispatch-constraint vocabulary; each becomes a needs:<slug> label
+windows = "Needs a Windows host or runner to build or verify"
+quiet-window = "Touches so much that it must merge alone, in a quiet window"
+```
+
+`setup --config` proposes the `needs:*` labels; `plan --config` rejects `needs` values outside the vocabulary.
+
 ## Issue types
 
 Org-level: `Task`, `Bug`, `Feature`, `Brainstorm`, `Mission`, `Lane`. Assessment proposes a type for any untyped issue it touches, so a sweep fills the gap as it goes.
@@ -25,6 +40,7 @@ Org-level: `Task`, `Bug`, `Feature`, `Brainstorm`, `Mission`, `Lane`. Assessment
 ## Each repo also needs
 
 - **Native issue dependencies and sub-issues** enabled. They are on for GitHub organisations by default.
+- **`docs/agents/triage.toml`**: components and needs vocabulary (above).
 - **`docs/agents/triage-labels.md`** mapping the triage roles to label strings, as flotilla has, so skills that speak in roles find the labels.
 - **A token** that can label, comment and add dependencies, for whoever applies plans. Investigators need read access only.
 

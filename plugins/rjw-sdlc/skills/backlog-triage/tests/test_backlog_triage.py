@@ -174,6 +174,62 @@ class PlanApplyTests(unittest.TestCase):
         self.assertEqual(api.writes, [("PATCH", "repos/o/r/issues/comments/77", {"body": "new"})])
 
 
+class OutcomeTests(unittest.TestCase):
+    def routes(self):
+        return {
+            f"repos/{REPO}/issues/5": issue(REPO, 5, labels=["triage:clear", "needs:old"], type_="Task"),
+            f"repos/{REPO}/issues/5/dependencies/blocked_by": [],
+            f"repos/{REPO}/issues/6": issue(REPO, 6, labels=["triage:needs-answer"]),
+            f"repos/{REPO}/issues/7": issue(REPO, 7),
+            f"repos/{REPO}/issues/7/dependencies/blocked_by": [],
+            f"repos/{REPO}/issues/8": issue(REPO, 8, state="closed"),
+            f"repos/{REPO}/issues/9": issue(REPO, 9),
+            f"repos/{REPO}/issues/9/dependencies/blocked_by": [],
+        }
+
+    def plan(self, verdicts, vocab=None):
+        return bt.plan_from_verdicts(bt.Tracker(FakeApi(self.routes())), verdicts, vocab, {"g": "stack 5 then 7"})
+
+    def test_park_wontfix_needs_split_subissues_and_new_issues(self):
+        plan = self.plan([
+            {"ref": "o/r#6", "state": "park", "summary": "needs a grill"},
+            {"ref": "o/r#9", "state": "wontfix", "summary": "tmux-only flags",
+             "new_issues": [{"title": "cleat mouse", "body": "inject mouse events"}]},
+            {"ref": "o/r#5", "state": "clear", "summary": "s", "needs": ["windows"], "split": True},
+            {"ref": "o/r#7", "state": "mission", "summary": "tracker", "sub_issues": ["o/r#9"]},
+            {"ref": "o/r#9", "state": "blocked", "summary": "b", "blockers": [{"ref": "o/r#8", "why": "closed already"}]},
+        ], vocab={"windows"})
+        ops = [(a["op"], a["ref"]) for a in plan["actions"]]
+        self.assertEqual(ops, [
+            ("type", "o/r#6"), ("unlabel", "o/r#6"), ("record", "o/r#6"),
+            ("create_issue", "o/r#9"), ("close", "o/r#9"),
+            ("needs", "o/r#5"), ("record", "o/r#5"),
+            ("type", "o/r#7"), ("sub_issue", "o/r#7"), ("record", "o/r#7"),
+            ("label", "o/r#9"), ("record", "o/r#9")])
+        self.assertEqual(plan["actions"][4]["reason"], "not_planned")
+        self.assertIn("already closed", plan["errors"][0]["errors"][0])
+        self.assertIn("Split before dispatch", plan["actions"][6]["body"])
+        self.assertEqual(bt.parse_record(plan["actions"][6]["body"])["state"], "clear")
+
+    def test_needs_vocabulary_is_enforced(self):
+        plan = self.plan([{"ref": "o/r#5", "state": "clear", "summary": "s", "needs": ["gpu"]}], vocab={"windows"})
+        self.assertIn("not in the repo's vocabulary", plan["errors"][0]["errors"][0])
+
+    def test_needs_writer_sets_exact_labels(self):
+        api = FakeApi(self.routes())
+        bt.Writer(api, bt.Tracker(api)).run({"op": "needs", "ref": "o/r#5", "needs": ["windows"]})
+        self.assertEqual(api.writes, [("DELETE", "repos/o/r/issues/5/labels/needs%3Aold", None),
+                                      ("POST", "repos/o/r/issues/5/labels", {"labels": ["needs:windows"]})])
+
+    def test_review_groups_questions_first_with_action_numbers(self):
+        plan = self.plan([{"ref": "o/r#9", "state": "needs-answer", "summary": "s", "question": "Which?"},
+                          {"ref": "o/r#7", "state": "clear", "summary": "fine"}])
+        text = bt.review(plan)
+        self.assertLess(text.index("## Questions"), text.index("## clear"))
+        self.assertIn("Which? _[1, 2]_", text)
+        self.assertIn("**g**: stack 5 then 7", text)
+
+
 class GroupTests(unittest.TestCase):
     def test_groups_by_top_component_folds_small_areas_and_splits_evenly(self):
         issues = [issue(REPO, n) for n in range(1, 12)]

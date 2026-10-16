@@ -15,7 +15,13 @@ The goal is a backlog whose dispatchability is **true, current and explained**: 
 Triage covers open issues that nothing else tends:
 
 - **In:** issues in lanes or with no home.
-- **Out:** children of a mission or map (wayfinder's advance loop and learn pass own their readiness and ordering); mission, map and lane issues themselves; ideation (Brainstorm type, `grill`/`grilling`/`map`/`brainstorm` labels); issues already `ready` (dispatch owns those).
+- **Out:**
+  - children of a mission or map: wayfinder's advance loop and learn pass own their readiness and ordering;
+  - mission, map and lane issues themselves;
+  - ideation: the Brainstorm type, or `grill`/`grilling`/`map`/`brainstorm` labels;
+  - issues already `ready`: dispatch owns those.
+
+**Umbrella trackers** are issues whose body lists child issues and that have no work of their own. They aren't triaged as work. If a tracker has a destination (a working outcome), propose it as a mission: the `mission` outcome sets type `Mission` and links its open children as native sub-issues (`"state": "mission", "sub_issues": [...]`), and wayfinder takes it over. If it has no destination, propose converting its children to sub-issues of their real home, or closing it.
 
 `scripts/backlog-triage.py scope OWNER/REPO...` lists exactly this set; `--untriaged` narrows it to issues with no triage label. Mission membership follows native parent links to the nearest Mission/Map ancestor, as dispatch does.
 
@@ -33,7 +39,21 @@ Every assessed issue carries **exactly one** `triage:*` label. Each is named for
 | `triage:needs-rewrite` | The body is stale, an outline, or too vague to judge | Anyone with context rewrites it; often an agent when the rewrite is mechanical |
 | `triage:waiting` | Waits on something outside the tracker: upstream, access, credentials, hardware, a person's action | The record says what to watch for |
 
-Two outcomes are proposed closures instead of labels: **superseded** (an open or landed issue replaces it) and **done** (the code already does it). Closing is always a listed action that a human approves.
+Some outcomes take the issue out of triage instead of labelling it:
+
+- **Closures**, always listed for a human to approve:
+  - **superseded:** an open or landed issue replaces it;
+  - **done:** the code already does it;
+  - **wontfix:** not worth doing, for example leftovers nobody needs.
+
+  If closing depends on a check ("confirm in Ghostty first"), say so in the summary; the approver can hold it.
+- **mission:** an umbrella tracker with a destination becomes a wayfinder mission (see Scope).
+- **park:** an idea or direction that needs a grill, a brainstorm or a prototype before anyone can judge it. The issue becomes a `Brainstorm` (ideation, out of scope) and loses its `triage:*` label. Record the direction you found in the summary so the grill starts from it.
+
+Two annotations go on any state:
+
+- **`split`:** the issue is startable, but too big for one convoy. The contract step should cut it into child issues.
+- **`needs`:** dispatch constraints, such as a Windows runner, a quiet merge window, the owner's machine or a live reproduction. They come from the repo's vocabulary (see [SETUP.md](SETUP.md)) and become `needs:<x>` labels, so placement can match them later.
 
 **Never apply `ready`.** `ready` means the body alone is a dispatchable contract, and it is earned by rewriting the body, not by assessment. Triage's `triage:clear` is the queue that feeds the contract step.
 
@@ -43,17 +63,18 @@ Read the issue body and comments, then check its claims against the code and the
 
 1. **Done or superseded?** Search for the behaviour by domain concept, not the request's wording. Look for a landed issue that did it, or an open one that replaces it.
 2. **Prerequisites present?** Grep the types, crates, files and config it names. A missing prerequisite that some open issue will deliver is a blocker; one that nothing delivers means the issue needs rewriting or a new issue.
-3. **Blockers still open?** Check every cited blocker's state. Look for unrecorded ones: work that must land first, a stack it belongs to, an issue editing the same code that would make this one rework. Cross-repo blockers are fine; native edges work across repos.
+3. **Blockers still open?** Check every cited blocker's state. Look for unrecorded ones: work that must land first, a stack it belongs to, an issue editing the same code that would make this one rework. Cross-repo blockers are fine; native edges work across repos. **List every open blocker in `blockers`, recorded or not.** `plan` proposes a native edge for each one that is missing, so an unrecorded blocker is still `blocked`, not a question.
 4. **Who decides?** An open design question that someone **other than the implementer** must answer is `needs-answer`, with the question and its owner. A choice the body leaves to the implementer, or one a competent implementer can make from the code and ADRs, is not a question. When unsure, make it `needs-answer` and say so in the question; the approver can rule "implementer decides" (see below).
 5. **Outside the tracker?** Upstream releases, credentials, access, hardware, a person's manual step, or a stated trigger condition is `waiting`.
-6. **Can someone start from the body?** If goal, scope and done-when are recoverable from the body plus the code, it's `clear`. If the body describes a world that has since changed (an older design, moved scope), or is too vague to judge, it's `needs-rewrite`.
+6. **Can someone start from it?** If the remaining work is recoverable from the body, its comments and the code, it's `clear`, even when the body is partly stale or the work is partly landed: the contract step rewrites the body anyway, so say what is stale in the summary. It's `needs-rewrite` only when the remaining work can't be recovered: the premise has changed, there is no done-when, or it is too vague to judge.
 
-Pick the state that most limits starting now: superseded/done, then blocked, needs-answer, waiting, needs-rewrite, clear.
+Pick the outcome that most limits starting now, in this order: superseded, done, wontfix, mission, park, blocked, needs-answer, waiting, needs-rewrite, clear. When an issue fits both needs-answer and needs-rewrite, choose needs-answer only if the answer has to come before anyone can rewrite it.
 
 Also note, when you see it:
 
 - **Batching:** which issues share files or components, which should stack as one convoy, which would collide if run in parallel.
-- **Type:** if the issue has no issue type, propose one (`Task`, `Bug`, `Feature`, `Brainstorm`).
+- **Type:** if the issue has no issue type, propose one: `Task`, `Bug` or `Feature`. Research and investigation are `Task`; `Brainstorm` comes from `park`.
+- **New issues:** work you found that has no issue yet, such as a follow-up or a piece split off. Put these in `new_issues`; they are filed only if approved.
 
 Write the verdict as JSON (schema in [SWEEP.md](SWEEP.md#verdict-schema)), with the commit you assessed against and the paths your evidence rests on, so staleness can be detected later.
 
@@ -62,17 +83,35 @@ Write the verdict as JSON (schema in [SWEEP.md](SWEEP.md#verdict-schema)), with 
 Verdicts never go straight to the tracker. They become a numbered plan that a human approves.
 
 ```bash
-scripts/backlog-triage.py plan verdicts.json > plan.json   # validates verdicts, diffs against current state
-scripts/backlog-triage.py show plan.json                   # numbered list for approval
+scripts/backlog-triage.py plan verdicts.json --config docs/agents/triage.toml > plan.json
+scripts/backlog-triage.py review plan.json                 # grouped Markdown for approval
+scripts/backlog-triage.py show plan.json                   # flat numbered list
 scripts/backlog-triage.py apply plan.json                  # prints only
 scripts/backlog-triage.py apply plan.json --yes --only 1,2,5
 ```
 
-`plan` emits, per verdict: native blocked-by edges not already present, the label change (removing any other `triage:*` label), the record comment (written once per issue and updated in place), a type if missing, or a proposed closure. Rejected verdicts are listed with their errors; fix and re-plan them.
+`plan` emits, per verdict:
 
-**Approval.** Show the `show` output and ask which actions to apply, using whatever question tool you have (or plain chat). Offer: all, all except some numbers, or none. Apply only what was approved, with `--only`.
+- native blocked-by edges not already present (a blocker that has already closed is reported, not linked);
+- sub-issue links and new issues;
+- the label change, removing any other `triage:*` label;
+- `needs:*` labels set to exactly the verdict's list;
+- the record comment, written once per issue and updated in place;
+- a type, if the issue has none or becomes a mission;
+- or, for a closure or park, the closure or the Brainstorm type.
 
-For each `needs-answer` item, offer the approver three rulings: **implementer decides** (re-plan it as `clear`), **I'll answer** (keep `needs-answer`, assign the owner), or **park** (propose Brainstorm type or a mission's fog). Many questions clear this way in one pass.
+Rejected verdicts are listed with their errors; fix them and re-plan.
+
+**Approval.** Show the `review` output: questions first, then closures, parks, new issues and edges, then each state, with batching notes at the end. Each line carries its action numbers. Ask which to apply, using whatever question tool you have (or plain chat). Offer all, all except some numbers, or none. Apply only what was approved, with `--only`.
+
+For each `needs-answer` item, offer the approver these rulings:
+
+- **an answer:** record it in the verdict's summary and re-plan with the resulting state;
+- **implementer decides:** re-plan it as `clear`;
+- **park:** re-plan it as `park`;
+- **I'll answer later:** keep `needs-answer` and assign the owner.
+
+Many questions clear this way in one pass.
 
 **No human present** (a crew, `FLOTILLA_CREW_ID` set): write the plan file, report its path and the `show` output, and stop. Don't apply.
 

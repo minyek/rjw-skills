@@ -7,7 +7,8 @@ Backlog triage helper: the deterministic half of the backlog-triage skill.
 
 Read subcommands:
     setup REPO...             Compare each repo's labels and the org's issue types
-                              with the canonical set; count untyped open issues
+                              with the canonical set (plus `needs:*` labels from
+                              --config); count untyped open issues
     scope REPO...             Open issues triage covers (not mission children, not
                               tracking/lane/ideation issues, not `ready`), with their
                               current triage label and open native blocker count
@@ -22,8 +23,11 @@ Read subcommands:
                               for a stronger investigator. Needs TYPESAFE_API_KEY
 
 Plan subcommands:
-    plan VERDICT.json...      Turn agents' verdicts into a numbered action plan (JSON)
-    show PLAN.json            Print the plan as a numbered list for approval
+    plan VERDICT.json...      Turn agents' verdicts into a numbered action plan (JSON);
+                              --config validates `needs` against the repo's vocabulary
+    show PLAN.json            Print the plan as a numbered list
+    review PLAN.json          The plan as grouped Markdown for approval: questions first,
+                              then closures, new issues, edges, and each state
     apply PLAN.json           Execute it. Prints only, unless --yes; --only 1,3,7
                               applies just those actions
 
@@ -81,7 +85,14 @@ TRACKING_TYPES = ("mission", "map")
 NOT_TRIAGED_TYPES = ("mission", "map", "lane")
 IDEATION = ("grill", "grilling", "map", "brainstorm")
 STATES = ("clear", "blocked", "needs-answer", "needs-rewrite", "waiting")
-CLOSING = ("superseded", "done")
+CLOSING = ("superseded", "done", "wontfix")
+PARK = "park"
+MISSION = "mission"
+LEAVING = (PARK, MISSION)
+CLOSE_REASON = {"superseded": "not_planned", "done": "completed", "wontfix": "not_planned"}
+NEEDS_PREFIX = "needs:"
+NEEDS_COLOR = "BFD4F2"
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
 
 RECORD_MARK = "<!-- backlog-triage:record v1 -->"
 DATA_RE = re.compile(r"<!-- backlog-triage:data (\{.*?\}) -->", re.S)
@@ -229,7 +240,9 @@ def scope_rows(tr: Tracker, repos: list[str], include_ideation=False, include_mi
 
 def render_record(v: dict, at: str) -> str:
     state = v["state"]
-    verdict = {"superseded": f"close: superseded by {v.get('superseded_by')}", "done": "close: already done"}.get(state, f"`triage:{state}`")
+    verdict = {"superseded": f"close: superseded by {v.get('superseded_by')}", "done": "close: already done",
+               "wontfix": "close: won't do", "park": "parked as Brainstorm",
+               "mission": "becomes a mission"}.get(state, f"`triage:{state}`")
     lines = [RECORD_MARK,
              "> *Triage assessment written by an agent. Correct the issue body, not this comment; "
              "the next assessment replaces it.*", "",
@@ -244,10 +257,15 @@ def render_record(v: dict, at: str) -> str:
         lines += ["", f"**Waiting on:** {v['waiting_on']}"]
     if v.get("evidence"):
         lines += ["", "**Evidence:**"] + [f"- {e}" for e in v["evidence"]]
+    if v.get("split"):
+        lines += ["", "**Split before dispatch:** too big for one convoy; the contract step should cut it into child issues."]
+    if v.get("needs"):
+        lines += ["", "**Needs:** " + ", ".join(f"`{NEEDS_PREFIX}{n}`" for n in v["needs"])]
     if v.get("batching"):
         lines += ["", f"**Batching:** {v['batching']}"]
     data = {"v": 1, "state": state, "at": at, "commit": v.get("commit"), "owner": v.get("owner"),
-            "blockers": [b["ref"] for b in v.get("blockers", [])], "paths": v.get("paths", [])}
+            "blockers": [b["ref"] for b in v.get("blockers", [])], "paths": v.get("paths", []),
+            "needs": v.get("needs", []), "split": bool(v.get("split"))}
     lines += ["", f"<!-- backlog-triage:data {json.dumps(data, separators=(',', ':'))} -->"]
     return "\n".join(lines)
 
@@ -503,12 +521,14 @@ def group_issues(issues: list[dict], answers: dict[str, dict], max_size: int, mi
 
 # ── plan / apply ───────────────────────────────────────────────────────
 
-def validate_verdict(v: dict) -> list[str]:
+def validate_verdict(v: dict, needs_vocab: set[str] | None = None) -> list[str]:
     errs = []
     if not REF_RE.match(str(v.get("ref", ""))):
         errs.append("ref must be owner/repo#N")
-    if v.get("state") not in STATES + CLOSING:
-        errs.append(f"state must be one of {STATES + CLOSING}")
+    if v.get("state") not in STATES + CLOSING + LEAVING:
+        errs.append(f"state must be one of {STATES + CLOSING + LEAVING}")
+    if v.get("state") == MISSION and not v.get("sub_issues"):
+        errs.append("mission requires sub_issues (the tracker's open children)")
     if v.get("state") == "needs-answer" and not v.get("question"):
         errs.append("needs-answer requires a question")
     if v.get("state") == "blocked" and not v.get("blockers"):
@@ -524,36 +544,77 @@ def validate_verdict(v: dict) -> list[str]:
         errs.append("commit must be a hex sha")
     if v.get("type") and v["type"] not in ISSUE_TYPES:
         errs.append(f"type must be one of {ISSUE_TYPES}")
+    for n in v.get("needs", []):
+        if not SLUG_RE.match(str(n)):
+            errs.append(f"need {n!r} must be a lowercase slug")
+        elif needs_vocab is not None and n not in needs_vocab:
+            errs.append(f"need {n!r} is not in the repo's vocabulary {sorted(needs_vocab)}")
+    for r in v.get("sub_issues", []):
+        if not REF_RE.match(str(r)):
+            errs.append(f"sub-issue {r!r} is not owner/repo#N")
+    for ni in v.get("new_issues", []):
+        if not ni.get("title") or not ni.get("body"):
+            errs.append("each new issue needs a title and body")
+        if ni.get("repo") and not REPO_RE.match(ni["repo"]):
+            errs.append(f"new issue repo {ni['repo']!r} is not owner/name")
     return errs
 
 
-def plan_from_verdicts(tr: Tracker, verdicts: list[dict]) -> dict:
-    actions, errors, at = [], [], now().isoformat(timespec="seconds")
+def plan_from_verdicts(tr: Tracker, verdicts: list[dict], needs_vocab: set[str] | None = None,
+                       batching: dict[str, str] | None = None) -> dict:
+    actions, errors, at, kept = [], [], now().isoformat(timespec="seconds"), {}
     for v in verdicts:
-        errs = validate_verdict(v)
+        errs = validate_verdict(v, needs_vocab)
         if errs:
             errors.append({"ref": v.get("ref"), "errors": errs})
             continue
         ref, state = v["ref"], v["state"]
+        repo = split_ref(ref)[0]
         issue = tr.issue(ref)
+        kept[ref] = {k: v.get(k) for k in ("state", "summary", "question", "owner", "confidence", "needs", "split",
+                                           "superseded_by", "waiting_on", "batching") if v.get(k)}
+        kept[ref]["title"] = issue.get("title")
+        for ni in v.get("new_issues", []):
+            actions.append({"op": "create_issue", "ref": ref, "repo": ni.get("repo") or repo, "title": ni["title"],
+                            "body": ni["body"] + f"\n\n_Proposed while triaging {ref}._", "why": ni["title"]})
         if state in CLOSING:
-            why = f"superseded by {v['superseded_by']}" if state == "superseded" else "already done"
-            body = render_record(v, at)
-            actions.append({"op": "close", "ref": ref, "reason": "not_planned" if state == "superseded" else "completed",
-                            "comment": body, "why": f"{why}: {v.get('summary', '')}"})
+            why = {"superseded": f"superseded by {v.get('superseded_by')}", "done": "already done", "wontfix": "won't do"}[state]
+            actions.append({"op": "close", "ref": ref, "reason": CLOSE_REASON[state], "comment": render_record(v, at),
+                            "why": f"{why}: {v.get('summary', '')}"})
+            continue
+        if state in LEAVING:
+            new_type = "Brainstorm" if state == PARK else "Mission"
+            if type_of(issue) != new_type:
+                actions.append({"op": "type", "ref": ref, "type": new_type, "why": f"{state}: " + v.get("summary", "")})
+            for child in v.get("sub_issues", []) if state == MISSION else []:
+                actions.append({"op": "sub_issue", "ref": ref, "child": child, "why": "child of this mission"})
+            if triage_label(issue):
+                actions.append({"op": "unlabel", "ref": ref, "why": f"{state} leaves triage scope"})
+            actions.append({"op": "record", "ref": ref, "body": render_record(v, at), "why": f"record {state}"})
             continue
         native = {ref_of(b) for b in tr.blockers(ref)}
         for b in v.get("blockers", []):
-            if b["ref"] not in native:
-                actions.append({"op": "blocked_by", "ref": ref, "blocker": b["ref"], "why": b.get("why", "")})
+            if b["ref"] in native:
+                continue
+            try:
+                closed = tr.issue(b["ref"]).get("state") == "closed"
+            except RuntimeError:
+                closed = None
+            if closed:
+                errors.append({"ref": ref, "errors": [f"blocker {b['ref']} is already closed; edge not proposed"]})
+                continue
+            actions.append({"op": "blocked_by", "ref": ref, "blocker": b["ref"], "why": b.get("why", "")})
         if triage_label(issue) != f"triage:{state}":
             actions.append({"op": "label", "ref": ref, "state": state, "why": v.get("summary", "")})
+        have = sorted(l[len(NEEDS_PREFIX):] for l in labels_of(issue) if l.startswith(NEEDS_PREFIX))
+        if sorted(v.get("needs", [])) != have:
+            actions.append({"op": "needs", "ref": ref, "needs": sorted(v.get("needs", [])), "why": "dispatch constraints"})
         actions.append({"op": "record", "ref": ref, "body": render_record(v, at), "why": f"record triage:{state}"})
-        if v.get("type") and not type_of(issue):
+        if v.get("type") and not type_of(issue) and v["type"] in ("Task", "Bug", "Feature"):
             actions.append({"op": "type", "ref": ref, "type": v["type"], "why": "issue has no type"})
     for i, a in enumerate(actions, 1):
         a["n"] = i
-    return {"generated_at": at, "actions": actions, "errors": errors}
+    return {"generated_at": at, "actions": actions, "errors": errors, "verdicts": kept, "batching": batching or {}}
 
 
 def describe(a: dict) -> str:
@@ -562,6 +623,10 @@ def describe(a: dict) -> str:
             "record": lambda: "write the triage record comment",
             "type": lambda: f"set type {a['type']}",
             "close": lambda: f"close as {a['reason']}",
+            "unlabel": lambda: "remove its triage:* label",
+            "needs": lambda: "set needs labels: " + (", ".join(a["needs"]) or "none"),
+            "sub_issue": lambda: f"add sub-issue {a['child']}",
+            "create_issue": lambda: f"file new issue in {a['repo']}",
             "create_label": lambda: f"create label {a['name']}"}[a["op"]]()
     target = a.get("ref") or a.get("repo")
     return f"{a['n']:>3}. {target}: {what}" + (f": {a['why']}" if a.get("why") and a["op"] != "record" else "")
@@ -604,11 +669,44 @@ class Writer:
         self.api.call("POST", f"repos/{repo}/issues/{n}/comments", {"body": a["comment"]})
         self.api.call("PATCH", f"repos/{repo}/issues/{n}", {"state": "closed", "state_reason": a["reason"]})
 
+    def op_unlabel(self, a):
+        repo, n = split_ref(a["ref"])
+        for l in labels_of(self.tr.issue(a["ref"])):
+            if l in TRIAGE_LABELS:
+                self.api.call("DELETE", f"repos/{repo}/issues/{n}/labels/{quote(l, safe='')}")
+
+    def op_needs(self, a):
+        repo, n = split_ref(a["ref"])
+        current = {l for l in labels_of(self.tr.issue(a["ref"])) if l.startswith(NEEDS_PREFIX)}
+        want = {NEEDS_PREFIX + x for x in a["needs"]}
+        for l in sorted(current - want):
+            self.api.call("DELETE", f"repos/{repo}/issues/{n}/labels/{quote(l, safe='')}")
+        if want - current:
+            self.api.call("POST", f"repos/{repo}/issues/{n}/labels", {"labels": sorted(want - current)})
+
+    def op_sub_issue(self, a):
+        repo, n = split_ref(a["ref"])
+        self.api.call("POST", f"repos/{repo}/issues/{n}/sub_issues", {"sub_issue_id": self.tr.issue(a["child"])["id"]})
+
+    def op_create_issue(self, a):
+        self.api.call("POST", f"repos/{a['repo']}/issues", {"title": a["title"], "body": a["body"]})
+
     def op_create_label(self, a):
         self.api.call("POST", f"repos/{a['repo']}/labels", {"name": a["name"], "color": a["color"], "description": a["description"]})
 
 
-def setup_report(api: Api, repos: list[str]) -> dict:
+def load_config(path: Path | None) -> dict:
+    """Per-repo triage config (TOML): [[component]] tables and a [needs] table of slug = description."""
+    if not path:
+        return {}
+    cfg = tomllib.loads(path.read_text())
+    for n in cfg.get("needs", {}):
+        if not SLUG_RE.match(n):
+            raise SystemExit(f"{path}: need {n!r} must be a lowercase slug")
+    return cfg
+
+
+def setup_report(api: Api, repos: list[str], needs: dict[str, str] | None = None) -> dict:
     out = {"repos": {}, "actions": []}
     orgs = {}
     for repo in repos:
@@ -619,7 +717,8 @@ def setup_report(api: Api, repos: list[str]) -> dict:
                 orgs[org] = {t["name"] for t in api.get(f"orgs/{org}/issue-types") or []}
             except RuntimeError:
                 orgs[org] = None
-        missing = [n for n in CANONICAL if n not in names]
+        wanted = CANONICAL | {NEEDS_PREFIX + k: (NEEDS_COLOR, d) for k, d in (needs or {}).items()}
+        missing = [n for n in wanted if n not in names]
         invalid_priority = sorted(n for n in names if n.startswith("priority:") and n.split(":", 1)[1].lower() not in VALID_TIERS)
         issues = [i for i in api.pages(f"repos/{repo}/issues?state=open") if "pull_request" not in i]
         untyped = sum(1 for i in issues if not type_of(i))
@@ -627,11 +726,51 @@ def setup_report(api: Api, repos: list[str]) -> dict:
         out["repos"][repo] = {"missing_labels": missing, "invalid_priority_labels": used,
                               "open_issues": len(issues), "untyped_open_issues": untyped,
                               "missing_issue_types": None if orgs[org] is None else [t for t in ISSUE_TYPES if t not in orgs[org]]}
-        out["actions"] += [{"op": "create_label", "repo": repo, "name": n, "color": CANONICAL[n][0],
-                            "description": CANONICAL[n][1], "why": "canonical label missing"} for n in missing]
+        out["actions"] += [{"op": "create_label", "repo": repo, "name": n, "color": wanted[n][0],
+                            "description": wanted[n][1], "why": "canonical label missing"} for n in missing]
     for i, a in enumerate(out["actions"], 1):
         a["n"] = i
     return out
+
+
+def review(plan: dict) -> str:
+    acts, verdicts = plan["actions"], plan.get("verdicts", {})
+    by_ref: dict[str, list[int]] = {}
+    for a in acts:
+        by_ref.setdefault(a.get("ref") or a.get("repo"), []).append(a["n"])
+    num = lambda ref: ", ".join(map(str, by_ref.get(ref, [])))  # noqa: E731
+    short = lambda ref: "#" + ref.split("#")[1]  # noqa: E731
+    out = ["# Triage review", "", f"{len(acts)} actions, {len(verdicts)} issues. Approve by action number; "
+           "every action for an issue is listed after it.", ""]
+    qs = [(r, v) for r, v in verdicts.items() if v["state"] == "needs-answer"]
+    if qs:
+        out += [f"## Questions ({len(qs)})", "", "Rule each: answer it, **implementer decides** (becomes clear), or **park**.", ""]
+        out += [f"- **{short(r)}** {v.get('title', '')}: {v.get('question')} _[{num(r)}]_" for r, v in qs]
+    sections = [("Close", lambda v: v["state"] in CLOSING), ("Park as Brainstorm", lambda v: v["state"] == PARK),
+                ("Become missions", lambda v: v["state"] == MISSION)]
+    for title, pred in sections:
+        rs = [(r, v) for r, v in verdicts.items() if pred(v)]
+        if rs:
+            out += ["", f"## {title} ({len(rs)})", ""]
+            out += [f"- **{short(r)}** {v.get('title', '')} ({v['state']}): {v.get('summary', '')} _[{num(r)}]_" for r, v in rs]
+    for op, title in (("create_issue", "New issues"), ("blocked_by", "New blocked-by edges"), ("sub_issue", "New sub-issues")):
+        xs = [a for a in acts if a["op"] == op]
+        if xs:
+            out += ["", f"## {title} ({len(xs)})", ""]
+            out += [f"- [{a['n']}] {short(a['ref'])}: {describe(a).split(': ', 1)[1]}" for a in xs]
+    for state in ("blocked", "waiting", "needs-rewrite", "clear"):
+        rs = [(r, v) for r, v in verdicts.items() if v["state"] == state]
+        if rs:
+            out += ["", f"## {state} ({len(rs)})", ""]
+            for r, v in rs:
+                extra = (" · split" if v.get("split") else "") + (f" · needs {', '.join(v['needs'])}" if v.get("needs") else "")
+                out.append(f"- **{short(r)}** {v.get('title', '')} ({(v.get('confidence') or '?')[0]}{extra}): "
+                           f"{v.get('summary', '')} _[{num(r)}]_")
+    if plan.get("batching"):
+        out += ["", "## Batching", ""] + [f"- **{g}**: {b}" for g, b in plan["batching"].items()]
+    if plan.get("errors"):
+        out += ["", "## Rejected", ""] + [f"- {e['ref']}: {'; '.join(e['errors'])}" for e in plan["errors"]]
+    return "\n".join(out) + "\n"
 
 
 # ── CLI ────────────────────────────────────────────────────────────────
@@ -646,7 +785,7 @@ def repos_arg(values: list[str]) -> list[str]:
 def main(argv=None, api: Api | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("setup"); s.add_argument("repos", nargs="+")
+    s = sub.add_parser("setup"); s.add_argument("repos", nargs="+"); s.add_argument("--config", type=Path)
     s = sub.add_parser("scope"); s.add_argument("repos", nargs="+")
     s.add_argument("--include-ideation", action="store_true"); s.add_argument("--include-missions", action="store_true")
     s.add_argument("--untriaged", action="store_true", help="only issues with no triage label")
@@ -656,13 +795,15 @@ def main(argv=None, api: Api | None = None) -> int:
     s = sub.add_parser("missions"); s.add_argument("repos", nargs="+"); s.add_argument("--idle-days", type=int, default=21)
     s = sub.add_parser("portfolio"); s.add_argument("repos", nargs="+"); s.add_argument("--days", type=int, default=30)
     s = sub.add_parser("group"); s.add_argument("repos", nargs="+")
-    s.add_argument("--components", type=Path, required=True, help="TOML file of [[component]] name/description/paths")
+    s.add_argument("--config", "--components", dest="config", type=Path, required=True,
+                   help="triage TOML: [[component]] name/description/paths, optional [needs]")
     s.add_argument("--refs", help="comma-separated refs to group instead of `scope --untriaged`")
     s.add_argument("--model", default="jev-1.13.0"); s.add_argument("--cache", type=Path)
     s.add_argument("--max-size", type=int, default=8); s.add_argument("--min-size", type=int, default=3)
     s.add_argument("--workers", type=int, default=8)
-    s = sub.add_parser("plan"); s.add_argument("verdicts", nargs="+", type=Path)
+    s = sub.add_parser("plan"); s.add_argument("verdicts", nargs="+", type=Path); s.add_argument("--config", type=Path)
     s = sub.add_parser("show"); s.add_argument("plan", type=Path)
+    s = sub.add_parser("review"); s.add_argument("plan", type=Path)
     s = sub.add_parser("apply"); s.add_argument("plan", type=Path)
     s.add_argument("--yes", action="store_true"); s.add_argument("--only", help="comma-separated action numbers")
     a = ap.parse_args(argv)
@@ -671,7 +812,7 @@ def main(argv=None, api: Api | None = None) -> int:
     emit = lambda x: print(json.dumps(x, indent=1))  # noqa: E731
 
     if a.cmd == "setup":
-        emit(setup_report(api, repos_arg(a.repos)))
+        emit(setup_report(api, repos_arg(a.repos), load_config(a.config).get("needs")))
     elif a.cmd == "scope":
         rows = scope_rows(tr, repos_arg(a.repos), a.include_ideation, a.include_missions)
         emit([r for r in rows if not (a.untriaged and r["triage"])])
@@ -695,7 +836,7 @@ def main(argv=None, api: Api | None = None) -> int:
         key = os.environ.get("TYPESAFE_API_KEY")
         if not key:
             sys.exit("group needs TYPESAFE_API_KEY; without it, group the sweep by reading titles (SWEEP.md)")
-        comps = load_components(a.components)
+        comps = load_components(a.config)
         repos = repos_arg(a.repos)
         if a.refs:
             issues = [tr.issue(r) for r in a.refs.split(",")]
@@ -713,11 +854,16 @@ def main(argv=None, api: Api | None = None) -> int:
                         "usd": round(jev.tokens * JEV_PRICE_PER_TOKEN, 4), "secs": round(time.time() - t0, 1)}
         emit(out)
     elif a.cmd == "plan":
-        verdicts = []
+        verdicts, batching = [], {}
         for p in a.verdicts:
             d = json.loads(p.read_text())
+            if isinstance(d, dict) and d.get("batching") and d.get("group"):
+                batching[d["group"]] = d["batching"]
             verdicts += d if isinstance(d, list) else d.get("verdicts", [d])
-        emit(plan_from_verdicts(tr, verdicts))
+        cfg = load_config(a.config)
+        emit(plan_from_verdicts(tr, verdicts, set(cfg["needs"]) if "needs" in cfg else None, batching))
+    elif a.cmd == "review":
+        print(review(json.loads(a.plan.read_text())), end="")
     elif a.cmd == "show":
         plan = json.loads(a.plan.read_text())
         for x in plan["actions"]:
