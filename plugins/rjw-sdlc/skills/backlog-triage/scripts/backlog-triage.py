@@ -806,6 +806,8 @@ def main(argv=None, api: Api | None = None) -> int:
     s = sub.add_parser("review"); s.add_argument("plan", type=Path)
     s = sub.add_parser("apply"); s.add_argument("plan", type=Path)
     s.add_argument("--yes", action="store_true"); s.add_argument("--only", help="comma-separated action numbers")
+    s.add_argument("--pace", type=float, default=1.0,
+                   help="seconds between actions; GitHub limits content creation to about 80 writes a minute")
     a = ap.parse_args(argv)
     api = api or Api()
     tr = Tracker(api)
@@ -882,7 +884,8 @@ def main(argv=None, api: Api | None = None) -> int:
                 continue
             try:
                 w.run(x)
-                print("done:", describe(x))
+                print("done:", describe(x), flush=True)
+                time.sleep(a.pace)
             except RuntimeError as e:
                 failed += 1
                 print(f"FAILED: {describe(x)}: {e}", file=sys.stderr)
