@@ -20,6 +20,43 @@ MAX_DESCRIPTION_CHARS = 500
 LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?(?:\s+\"[^\"]*\")?\)")
 # Fenced blocks and double-quoted spans hold text a skill writes into the target project.
 TEMPLATE_RE = re.compile(r"```.*?```|\"[^\"\n]*\"", re.DOTALL)
+# Project-neutral skill bodies must not name these project commands, paths or issues.
+NEUTRAL_PATTERNS: dict[str, list[str]] = {
+    "testing/SKILL.md": [
+        r"flotilla (artifact put|crew stall)",
+        r"crates/",
+        r"#\d+",
+        r"/mnt/",
+        r"~/\.claude",
+        r"\barm-run\b",
+        r"/sqmerge",
+        r"development-delivery",
+        r"delivery-process",
+    ],
+    "consistency-review/SKILL.md": [r"(?i)\bgrill", r"(?i)\bflotilla\b", r"Scold", r"crates/", r"--include=\"\*\.rs\""],
+}
+# One text per pattern above, each naming what that pattern forbids.
+PLANTED_VIOLATIONS: dict[str, list[str]] = {
+    "testing/SKILL.md": [
+        "run flotilla artifact put",
+        "after flotilla crew stall",
+        "see crates/core",
+        "fixes #123",
+        "read /mnt/work/x",
+        "see ~/.claude/CLAUDE.md",
+        "run it under arm-run",
+        "merge with /sqmerge",
+        "the development-delivery skill",
+        "per delivery-process.md",
+    ],
+    "consistency-review/SKILL.md": [
+        "Grill the author",
+        "the Flotilla board",
+        "ask Scold",
+        "see crates/core",
+        'grep --include="*.rs"',
+    ],
+}
 
 
 def prose_links(text: str) -> list[str]:
@@ -40,6 +77,8 @@ def frontmatter(path: Path) -> dict[str, str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0] != "---":
         raise AssertionError(f"{path} has no frontmatter")
+    if "---" not in lines[1:]:
+        raise AssertionError(f"{path} has unterminated frontmatter")
     end = lines.index("---", 1)
     fields = {}
     for line in lines[1:end]:
@@ -92,21 +131,30 @@ class ContentTest(unittest.TestCase):
         self.assertNotIn("/tmp", text)
 
     def test_project_neutral_bodies_name_no_project_commands_paths_or_issues(self) -> None:
-        neutral = {
-            "testing/SKILL.md": [r"flotilla (artifact put|crew stall)", r"crates/", r"#\d+"],
-            "consistency-review/SKILL.md": [r"(?i)\bgrill", r"(?i)\bflotilla\b", r"Scold", r"crates/", r"--include=\"\*\.rs\""],
-        }
-        for name, patterns in neutral.items():
+        for name, patterns in NEUTRAL_PATTERNS.items():
             text = (SKILLS_DIR / name).read_text(encoding="utf-8")
             for pattern in patterns:
                 with self.subTest(file=name, pattern=pattern):
                     self.assertIsNone(re.search(pattern, text))
 
+    def test_neutrality_patterns_catch_planted_violations(self) -> None:
+        # The body check passes vacuously when a pattern is dropped or no longer matches what it
+        # names. Every planted violation must match some pattern, and every pattern some planted
+        # violation; a pattern may be rewritten as long as both still hold.
+        for name, patterns in NEUTRAL_PATTERNS.items():
+            planted_violations = PLANTED_VIOLATIONS[name]
+            for planted in planted_violations:
+                with self.subTest(file=name, planted=planted):
+                    self.assertTrue(any(re.search(pattern, planted) for pattern in patterns))
+            for pattern in patterns:
+                with self.subTest(file=name, pattern=pattern):
+                    self.assertTrue(any(re.search(pattern, planted) for planted in planted_violations))
+
 
 class ManifestTest(unittest.TestCase):
     def test_marketplace_and_plugin_versions_agree(self) -> None:
-        marketplace = json.loads((REPO_DIR / ".claude-plugin" / "marketplace.json").read_text())
-        plugin = json.loads((PLUGIN_DIR / ".claude-plugin" / "plugin.json").read_text())
+        marketplace = json.loads((REPO_DIR / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        plugin = json.loads((PLUGIN_DIR / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         listed = {p["name"]: p["version"] for p in marketplace["plugins"]}
         self.assertEqual(listed[plugin["name"]], plugin["version"])
 
