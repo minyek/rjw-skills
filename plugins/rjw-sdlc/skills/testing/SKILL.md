@@ -69,7 +69,14 @@ Each test guards a behaviour that would otherwise break unnoticed.
   - Assert what the code does with a value: a lookup's fallback, a threshold's effect on a decision, a parser's handling of it.
   - Where two sources of truth must agree, read one from the other and assert that they agree.
   - Assert a stored value itself only when the value is the contract (§5), or when it is a deliberate posture pin. A posture-pin test names its measured reason and the decision that set it, and compares against that decision's source where it can.
-  - A test restates a value when it loads a YAML, JSON, properties or TOML file and compares a field to a literal, compares a constant to the same literal, or asserts what it passed in.
+  - Outside those exceptions, a test earns nothing when it does one of these:
+    - **Restates a value.** It loads a YAML, JSON, properties or TOML file and compares a field to a literal, or it compares a constant to the same literal.
+    - **Echoes.** It asserts what it passed in, or only what its own mocks were set up to return.
+    - **Pins wording.** It asserts sentences, phrases, headings or their order in prose, documentation or instruction text, unless the wording is itself a contract (§5), such as CLI help a script parses or an error message an agent acts on.
+    - **Greps instead of running.** It searches source text for a string to stand in for running the behaviour: a comment that holds the string makes it pass. A static check whose subject is the source itself, such as a forbidden import, is not this.
+    - **Compares an unread golden copy.** It compares output byte for byte that nothing reads byte for byte.
+    - **Duplicates.** It tests the same behaviour at the same layer as another test.
+  - Rewrite such a test to assert the behaviour it stood for. Delete it when another test covers that behaviour, or when it covers none. Record which, and name the covering test if there is one.
   - A change that only edits configuration can have no new test; its recorded acceptance run is the evidence.
 - **Make every assertion run.** A required setup failure fails the test. A permitted environment skip shows in the output, and coverage the build requires actually executes.
 - **Keep inputs inside the test.** Read configuration only from the test's own directory or fixtures.
@@ -85,7 +92,7 @@ Each test guards a behaviour that would otherwise break unnoticed.
 - [ ] Edge cases (empty, boundary, duplicate, error, interleaving) are named or generated.
 - [ ] Real collaborators or fakes are used; any boundary double carries a one-line note.
 - [ ] Mutation check done: at least 2 mutants, each caught, reverted, and written up in the PR body or commit message.
-- [ ] Each test names the regression it alone catches, and none fails only on a deliberate edit to a value it restates.
+- [ ] Each test names the regression it alone catches, and none fails only on a deliberate edit to a value it restates or wording it pins.
 - [ ] Every assertion runs, inputs come from the test's own directory, and waits are on events.
 - [ ] Bug fix: the test failed before the fix.
 - [ ] Decisions are recorded where the project records design decisions.
