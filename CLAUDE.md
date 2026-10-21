@@ -10,7 +10,7 @@ go through `/worktree-new` and `/sqmerge` as anywhere else. Why: [docs/decisions
 
 ## Syncing from upstream
 
-`/sync-upstream` ([.claude/commands/sync-upstream.md](.claude/commands/sync-upstream.md)) runs these steps.
+The global `/sync-upstream` command runs these steps.
 
 A sync is this repository's one exception to `/sqmerge`'s squash: squashing would make upstream's commits stop being
 ancestors of `main`, and every later sync would merge all of upstream's history again.
@@ -23,6 +23,14 @@ ancestors of `main`, and every later sync would merge all of upstream's history 
    - If `--ff-only` refuses because `main` moved, merge `main` into the branch, run `/gate` again, and retry.
    - If the push fails after the fast-forward, report it and land nothing else on `main` until the user decides.
 4. Remove the worktree and delete the branch.
+
+Conflict and fit rules for this fork's syncs:
+- Both manifests (`.claude-plugin/marketplace.json` and `plugins/rjw-sdlc/.claude-plugin/plugin.json`) carry the
+  same version, one minor above the larger of the fork's and upstream's.
+- When upstream deletes or replaces a skill the fork edited, take the removal and name the dropped fork change.
+- `test_skill_metadata.py` is the fork's own check: a new upstream skill whose `description` does not open with
+  "Use when" gets that rewrite, and any new upstream test directory is added to `GATE_FULL` in
+  `.claude/delivery.env`.
 
 ## Contributing upstream
 
