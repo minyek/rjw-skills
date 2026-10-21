@@ -1,6 +1,6 @@
 ---
 name: backlog-triage
-description: Assess open issues for whether work could start now and, if not, why not and who unblocks it; record the verdict as a triage:* label, native blocked-by edges and one record comment; keep those assessments current. Use when filing an issue, sweeping an unlabelled backlog, or checking which assessments have gone stale.
+description: Use when filing an issue, sweeping an unlabelled backlog, or checking which assessments have gone stale. Assesses open issues for whether work could start now and, if not, why not and who unblocks it; records the verdict as a triage:* label, native blocked-by edges and one record comment.
 argument-hint: "[sweep | issue-ref | stale | setup]"
 ---
 

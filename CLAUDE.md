@@ -34,7 +34,7 @@ user's go-ahead.
 
 ## Gate
 
-`/gate`, configured by [.claude/delivery.env](.claude/delivery.env): both test suites.
+`/gate`, configured by [.claude/delivery.env](.claude/delivery.env): the plugin and helper test suites.
 
 ## Installing the plugin from this fork
 
