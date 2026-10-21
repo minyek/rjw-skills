@@ -1,5 +1,5 @@
 ---
-description: Merge upstream/main into this fork's main on a worktree branch, gate it, and hand over the landing command
+description: Merge upstream/main into this fork's main on a worktree branch, gate it, land it and push
 ---
 
 # Sync upstream
@@ -26,14 +26,14 @@ it does not go through `/sqmerge`.
    fork side with the smallest change, for example a `description` that opens with "Use when" for
    `test_skill_metadata.py`. Add any new upstream test directory to `GATE_FULL` in `.claude/delivery.env`, so the gate
    covers it. Commit these in a separate commit after the merge commit, with explicit paths.
-5. **Hand over the landing.** The hook on the main checkout refuses `git merge` there, even a fast-forward, and the
-   landing must not be bypassed from here. Stop and print this for the user to run, with real paths and branch name:
-   ```
-   DELIVERY_OVERRIDE=1 git -C <main> merge --ff-only sync-upstream && git -C <main> push origin main
-   ```
-   Then wait. Never push yourself, and never leave the sync on `main` unpushed.
-6. **After the user confirms.** Check that `main` and `origin/main` are at the same commit, remove the worktree
-   (`git worktree remove`), and delete the branch (`git branch -d sync-upstream`). Tell the user to run
-   `claude plugin marketplace update rjw-skills && claude plugin update rjw-sdlc@rjw-skills`, then restart Claude Code.
-   If `--ff-only` refused because `main` moved, merge `main` into the branch, run `/gate` again, and print the
-   command again.
+5. **Land and push.** Invoking this command is the user's go-ahead. Run
+   `git -C <main> merge --ff-only sync-upstream`, then `git -C <main> push origin main`, in that order and in one
+   step, so a sync is never left unpushed on `main`.
+   - If `--ff-only` refuses because `main` moved, merge `main` into the branch, run `/gate` again, and retry.
+   - If the guard on the main checkout denies the merge, stop and report its message. Do not add
+     `DELIVERY_OVERRIDE=1`; that prefix is the user's to type.
+   - If the push fails after the fast-forward, report it and land nothing else on `main` until the user decides.
+6. **Clean up.** Check that `main` and `origin/main` are at the same commit, `git worktree remove` the worktree and
+   `git branch -d sync-upstream`. Tell the user to run
+   `claude plugin marketplace update rjw-skills && claude plugin update rjw-sdlc@rjw-skills`, then restart Claude
+   Code.
