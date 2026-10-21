@@ -10,6 +10,8 @@ go through `/worktree-new` and `/sqmerge` as anywhere else. Why: [docs/decisions
 
 ## Syncing from upstream
 
+`/sync-upstream` ([.claude/commands/sync-upstream.md](.claude/commands/sync-upstream.md)) runs these steps.
+
 A sync is this repository's one exception to `/sqmerge`'s squash: squashing would make upstream's commits stop being
 ancestors of `main`, and every later sync would merge all of upstream's history again.
 
@@ -18,6 +20,8 @@ ancestors of `main`, and every later sync would merge all of upstream's history 
 3. With the user's go-ahead, land and push in one step: `git -C <main> merge --ff-only <branch>`, then
    `git -C <main> push origin main`. Never leave a sync unpushed on `main`, where the next `/sqmerge` push would
    carry it without that go-ahead.
+   - A hook refuses `git merge` in the main checkout, so the user runs the landing with the `DELIVERY_OVERRIDE=1`
+     prefix.
    - If `--ff-only` refuses because `main` moved, merge `main` into the branch, run `/gate` again, and retry.
    - If the push fails after the fast-forward, report it and land nothing else on `main` until the user decides.
 4. Remove the worktree and delete the branch.
