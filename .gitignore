@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Raw evidence behind a report is not committed; see docs/README.md.
+docs/reports/artefacts/

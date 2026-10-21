@@ -60,4 +60,4 @@ both manifests.
 
 ## Records
 
-Design records: [docs/decisions/](docs/decisions/README.md). Reports and their evidence: `docs/reports/`.
+Design records: [docs/decisions/](docs/decisions/README.md). Reports: `docs/reports/`. A report carries its method, results and decisions; never commit the raw evidence behind it (transcripts, per-run output, fixtures), and put what a later reader needs in the report or the commit message.
