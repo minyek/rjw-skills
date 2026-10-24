@@ -21,7 +21,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
 
 - **New data path, new structure, new boundary crossing, or a change on a scale-sensitive path**: the full steps below. A path is **scale-sensitive** when it runs per item, per request or per event, or holds or streams a collection that grows with use.
 - **A change inside a settled implementation choice**: cite its record and confirm its assumptions still hold.
-- **Anything else**: one line saying why scale does not bear on it.
+- **Anything else**: one line saying why scale does not bear on it. A change to what a start reads from earlier runs also follows [EVOLUTION.md](EVOLUTION.md)'s start rules, whatever its tier.
 
 ## Steps
 
@@ -34,7 +34,7 @@ Make it concrete rather than imagined: for the hottest operation, write its cost
    - Operation lowering (who decides how operations execute, pushdown to backends): [LOWERING.md](LOWERING.md)
    - Concurrency, ownership and backpressure: [CONCURRENCY.md](CONCURRENCY.md)
    - Protocol and wire format: [PROTOCOLS.md](PROTOCOLS.md)
-   - Evolution of anything that outlives a process (wire, persisted formats, schemas, public APIs): [EVOLUTION.md](EVOLUTION.md)
+   - Evolution of anything that outlives a process (wire, persisted formats, schemas, public APIs), and what a start does with the state files, journals, checkpoints and markers earlier runs left: [EVOLUTION.md](EVOLUTION.md)
    - Failure at boundaries, when the work calls across a process or network boundary: [FAILURE.md](FAILURE.md)
 3. **Run the profiler test.** Done when every axis choice passes or is recorded as a smaller shape.
 4. **Record** the choices following the project's conventions (below).
@@ -99,6 +99,7 @@ Review is static: arithmetic is the evidence.
 - A per-item lease on facts that share one source and grow with use, without a recorded constant-work choice, is a finding. So is a design without time-based expiry that does not say how a lost removal is recovered.
 - A per-entry field with no named reader is a finding: it costs its size times the count.
 - A change to a wire protocol, persisted format, schema or public API that breaks the rules of its evolution level is a finding, as is a fallback that does not say it served the answer.
+- A start that refuses or throws over a runtime-written input (a state file, journal, checkpoint or marker an earlier run left) is a finding, unless it is a lock or marker whose owner is alive ([EVOLUTION.md](EVOLUTION.md)).
 - A domain rule enforced only as a schema constraint or a basic-type restriction is a finding, as is one checked apart from the write it guards.
 - Check that assumption markers exist where records say they do.
 
