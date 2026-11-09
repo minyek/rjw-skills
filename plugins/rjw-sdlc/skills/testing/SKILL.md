@@ -32,7 +32,7 @@ Pick the smallest shape that fully expresses the behaviour:
 
 ## 3. Collaborators
 
-Use **real collaborators or in-memory fakes**. Introduce a test double only at a true process or network boundary (a subprocess, a socket, an HTTP endpoint, the git CLI), with a one-line comment saying which boundary it stands in for. Re-record record-and-replay fixtures with the project's record mode, and keep them exactly as recorded.
+Use **real collaborators or in-memory fakes**. Introduce a test double only at a true process or network boundary (a subprocess, a socket, an HTTP endpoint, the git CLI), with a one-line comment saying which boundary it stands in for. Re-record record-and-replay fixtures with the project's record mode, and keep them exactly as recorded. A double of a host tool (a CLI the code runs, such as `chmod` or `git`) models the forms of input the code under test sends it, and any other form of the same input that the project's own code already sends to that tool; it need not accept every form the real tool does. When a review asks whether a test fails on a deliberate edit that changes no behaviour, an edit that makes the code send a form outside that set does not count. Another call that sends `g+w` to `chmod` puts that form in the set, not every symbolic mode: `u=rw,g=rw,o=r` stays outside it until a call in the project sends it.
 
 ## 4. Edge cases
 
