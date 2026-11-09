@@ -81,7 +81,7 @@ Each test guards a behaviour that would otherwise break unnoticed.
 - **Make every assertion run.** A required setup failure fails the test. A permitted environment skip shows in the output, and coverage the build requires actually executes.
 - **Keep inputs inside the test.** Read configuration only from the test's own directory or fixtures.
 - **Check the test data.** Look for suspicious values in fixtures, such as constant columns or all zeros, and fix their cause.
-- **Wait for events, not time.** No wall-clock limit a slow or loaded machine can trip: no per-test or tier-wide timeouts, sleep-then-assert windows, or deadlines on subprocesses, joins or awaits sized near the work's duration. Wait for the event itself, and get hang diagnosis from a stack dump that doesn't fail the test. A bounded wait is a deadlock guard sized orders of magnitude above the work's worst loaded duration. Elapsed-time assertions belong only in a separately tagged performance suite that runs on a lightly loaded machine.
+- **Wait for events, not time.** No wall-clock limit a slow or loaded machine can trip: no per-test or tier-wide timeouts, sleep-then-assert windows, or deadlines on subprocesses, joins or awaits sized near the work's duration. Wait for the event itself, and get hang diagnosis from a stack dump that doesn't fail the test. A bounded wait is a deadlock guard sized orders of magnitude above the work's worst loaded duration. Elapsed-time assertions belong only in a separately tagged performance suite that runs on a lightly loaded machine. An ordering test, one whose assertion depends on the order in which two or more parties act, holds every party at an event, the code under test's own settle, retry, debounce or poll windows included: the test ends each window itself (a fake clock, an injected window, a hook it releases), never by letting the code's own timer run. Before handing off the change, run it once with each such window at its minimum (zero, or the smallest the code accepts); it must pass, and the run is recorded with the mutation check (§6). A window the test cannot set is made settable, passed in by the caller or read from configuration the way the project threads its other defaults.
 - **Weigh coverage gaps.** A missing conceivable test is a gap to weigh against its setup and maintenance cost. It is a defect only when it leaves a real regression unguarded.
 
 ## Before you hand off the change
@@ -92,6 +92,7 @@ Each test guards a behaviour that would otherwise break unnoticed.
 - [ ] Edge cases (empty, boundary, duplicate, error, interleaving) are named or generated.
 - [ ] Real collaborators or fakes are used; any boundary double carries a one-line note.
 - [ ] Mutation check done: at least 2 mutants, each caught, reverted, and written up in the PR body or commit message.
+- [ ] Each ordering test holds every party at an event, the code under test's own windows included, and passed once with each window at its minimum, recorded with the mutation check.
 - [ ] Each test names the regression it alone catches, and none fails only on a deliberate edit to a value it restates or wording it pins.
 - [ ] Every assertion runs, inputs come from the test's own directory, and waits are on events.
 - [ ] Bug fix: the test failed before the fix.
