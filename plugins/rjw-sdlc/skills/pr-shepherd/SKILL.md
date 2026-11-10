@@ -1,6 +1,6 @@
 ---
 name: pr-shepherd
-description: Use when a GitHub pull request has review comments to answer, failing or pending CI checks, or merge conflicts, or when asked whether a PR is ready to merge.
+description: Use when a GitHub pull request has review comments to answer against the issue's contract, failing or pending CI checks, or merge conflicts, or when asked whether a PR is ready to merge.
 argument-hint: "[PR-number]"
 ---
 
@@ -12,7 +12,14 @@ Shepherd a pull request from submission to merge readiness. Re-run it as the PR 
 
 ## Directives
 
-**Maximize quality through the review interaction.** Treat each comment as a claim to verify against the codebase, not an instruction to follow. Accept feedback that improves the code. Push back only with concrete technical evidence. Do not agree performatively or dismiss feedback to save an iteration.
+**Maximize quality through the review interaction, against the issue's contract.** Treat each comment as a claim to verify against the codebase and the issue the PR implements, not an instruction to follow. Answer each finding in one of four ways:
+
+- **A bug inside the contract** (a concrete input or sequence that goes wrong): fix it, with a test that fails without the fix.
+- **Waste** (code beyond the contract, duplicated, unused, a timer or poll, a field or option nothing reads): delete it. Removing code needs no further justification.
+- **An addition the contract does not ask for** (new hardening, limits, timeouts, validation, options, accepting more input shapes, extra messages): decline it by default. Reply with one line: "outside the contract of #N", plus a follow-up issue if it is worth doing. Implement it only if it fixes a bug as above.
+- **Wrong**: push back with concrete technical evidence.
+
+When two answers are both acceptable, choose the one with the smaller diff. Do not agree performatively, and do not dismiss feedback to save an iteration.
 
 **Send all helper-script comment bodies through stdin.** Never put review prose in a shell argument: backticked identifiers can be executed by the shell and silently removed from the posted comment. Use a quoted heredoc:
 
